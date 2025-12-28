@@ -1,0 +1,15 @@
+streamlit
+ccxt
+pandas
+pandas-ta-openbb
+google-genai
+python-dotenv
+plotly
+fastapi
+uvicorn
+psycopg2-binary
+requests
+transformers
+torch
+scikit-learn
+numpy
