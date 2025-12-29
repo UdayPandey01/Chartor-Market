@@ -1,296 +1,251 @@
-# Chartor AI - Intelligent Trading Bot
 
-Chartor AI is an advanced automated trading system that combines machine learning, sentiment analysis, and AI-powered decision-making to execute trades on the WEEX exchange. The platform features a Strategy Marketplace where users can create, manage, and activate custom trading strategies in plain English.
 
-## 🚀 Features
+# Chartor Market
 
-### Core Features
-- **Hybrid AI Trading Engine**: Combines local ML models (RandomForest) with Gemini AI for intelligent trading decisions
-- **Strategy Marketplace**: Create and manage custom trading strategies in plain English
-- **Auto-Trading**: Automated trade execution based on active strategies or AI analysis
-- **Real-Time Market Analysis**: Technical indicators (RSI, EMA, ATR) with ML predictions
-- **Sentiment Analysis**: FinBERT-based market sentiment analysis
-- **Risk Management**: Configurable risk tolerance and position management
-- **Live Trading Dashboard**: Modern React-based UI with real-time charts and logs
+**Where strategies trade.**
+
+Chartor Market is an AI-native automated trading platform with a built-in **Strategy Marketplace**, enabling users to create, activate, and execute algorithmic trading strategies using plain English. It bridges the gap between human intent and machine-executable trading logic, making systematic trading accessible without compromising sophistication.
+
+---
+
+## 1. Problem Statement
+
+Algorithmic trading today suffers from three fundamental problems:
+
+### 1. Strategy Creation Is Inaccessible
+
+Building trading strategies typically requires:
+
+* Strong programming skills
+* Deep familiarity with trading frameworks
+* Complex rule encoding and testing
+
+This excludes a large class of traders, analysts, and domain experts who understand markets but not code.
+
+### 2. Execution Is Fragmented
+
+Most platforms separate:
+
+* Strategy ideation
+* Backtesting
+* Execution
+* Risk management
+
+This fragmentation introduces latency, inconsistency, and operational risk.
+
+### 3. Decision-Making Lacks Context
+
+Purely rule-based bots ignore:
+
+* Market sentiment
+* Regime shifts
+* Probabilistic confidence
+
+While purely AI-driven systems lack transparency and user control.
+
+---
+
+## 2. Example
+
+A trader wants to express the following logic:
+
+> “Buy BTC when RSI is below 30, price is above the 20 EMA, and market sentiment is positive. Exit when RSI crosses above 70 or trend turns bearish.”
+
+In most systems, this requires:
+
+* Writing indicator code
+* Wiring conditions manually
+* Handling execution edge cases
+
+In Chartor Market, this strategy is written **exactly as above**, saved, toggled on, and executed automatically.
+
+---
+
+## 3. Solution
+
+Chartor Market introduces a **Strategy-as-Language** paradigm.
+
+### Core Idea
+
+Plain-English trading intent → AI translation → Safe executable logic → Automated execution.
+
+### How It Works
+
+1. **Natural Language Input**
+   Users describe strategies in plain English.
+
+2. **AI Translation Layer**
+   Gemini AI converts descriptions into deterministic, executable strategy logic.
+
+3. **Hybrid Decision Engine**
+   Decisions are synthesized using:
+
+   * Technical indicators (RSI, EMA, ATR)
+   * Machine learning predictions (RandomForest)
+   * Market sentiment (FinBERT)
+   * User-defined strategy rules
+
+4. **Automated Execution**
+   Validated decisions are executed in real time on the WEEX exchange with built-in risk controls.
+
+---
+
+## 4. Key Features
 
 ### Strategy Marketplace
-- **Create Strategies**: Describe trading logic in plain English (e.g., "Buy when RSI is under 30")
-- **AI Translation**: Gemini AI converts natural language to executable trading logic
-- **Toggle Activation**: Enable/disable strategies with a single click
-- **Auto-Execution**: Active strategies automatically execute trades when conditions are met
 
-### Technical Analysis
-- **500 Candle History**: Extended historical data for better ML training
-- **Multiple Timeframes**: Scalping (1m), Intraday (15m), Swing (4h)
-- **Technical Indicators**: RSI, EMA, ATR, Volume Analysis
-- **Market Structure Analysis**: Trend detection, support/resistance levels
+* Create strategies using natural language
+* AI-translated into executable logic
+* One-click activation and deactivation
+* Multiple strategies can run concurrently
 
-## 📋 Prerequisites
+### Hybrid AI Trading Engine
 
-- Python 3.8+
-- Node.js 16+ (for frontend)
-- PostgreSQL database (Neon recommended)
-- WEEX API credentials
-- Google Gemini API key
+* Local ML models for price behavior
+* LLM-based reasoning for contextual decisions
+* Deterministic confidence thresholds for execution
 
-## 🛠️ Installation
+### Real-Time Market Intelligence
 
-### Backend Setup
+* Multi-timeframe analysis (1m, 15m, 4h)
+* 500-candle historical context
+* Trend and market structure detection
+* Volume and volatility awareness
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/HoomanBuilds/Chartor-Market.git
-   cd Chartor-Market
-   ```
+### Risk & Execution Controls
 
-2. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+* Configurable risk tolerance
+* Confidence-based trade filtering
+* Position tracking and P&L monitoring
 
-3. **Configure environment variables**
-   Create a `.env` file in the root directory:
-   ```env
-   # Database (Neon PostgreSQL)
-   DATABASE_URL=postgresql://user:password@host/database
+### Live Trading Dashboard
 
-   # WEEX Exchange API
-   WEEX_API_KEY=your_weex_api_key
-   WEEX_SECRET=your_weex_secret
-   WEEX_PASSPHRASE=your_weex_passphrase
+* Real-time charts and logs
+* Strategy status visibility
+* Trade history and open positions
 
-   # Google Gemini API
-   GEMINI_API_KEY=your_gemini_api_key
-   GEMINI_CHAT_MODEL=gemini-flash-latest
-   GEMINI_DECISION_MODEL=gemini-flash-latest
-   ```
+---
 
-4. **Initialize the database**
-   The database tables will be created automatically on first run.
+## 5. System Architecture
 
-5. **Start the backend server**
-   ```bash
-   python api_server.py
-   ```
-   The server will run on `http://localhost:8000`
+### Backend
 
-### Frontend Setup
+* **FastAPI** for low-latency APIs
+* **RandomForest ML** for predictive signals
+* **FinBERT** for sentiment analysis
+* **Gemini AI** for strategy translation and decision synthesis
+* **PostgreSQL (Neon)** for persistence
+* **WEEX API** for live trade execution
 
-1. **Navigate to frontend directory**
-   ```bash
-   cd kairos-trading-hub-main
-   ```
+### Frontend
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   bun install
-   ```
-
-3. **Start the development server**
-   ```bash
-   npm run dev
-   # or
-   bun dev
-   ```
-   The frontend will run on `http://localhost:5173` (or port 8080)
-
-## 📖 Usage
-
-### Starting Auto-Trading
-
-1. **Enable Auto-Trading**
-   - Open the Sentinel tab in the right panel
-   - Toggle "Auto-Trading" switch to ON
-   - The sentinel service will start monitoring the market
-
-2. **Select Trading Asset**
-   - Click on an asset in the left sidebar (BTC, ETH, etc.)
-   - The system will automatically update to monitor that asset
-
-3. **Configure Risk Settings**
-   - Adjust risk tolerance slider (0-50%)
-   - Lower values = more conservative trading
-
-### Creating Strategies
-
-1. **Open Strategies Tab**
-   - Click on the "Strategies" tab in the right panel
-
-2. **Create New Strategy**
-   - Click "Create" button
-   - Enter strategy name (e.g., "RSI Oversold Buy")
-   - Describe your strategy in plain English:
-     - "Buy when RSI is under 30 and price is above EMA 20"
-     - "Sell when RSI exceeds 70"
-     - "Buy on high volume with bullish trend"
-   - Click "Generate & Save Strategy"
-   - Gemini AI will translate your description into executable logic
-
-3. **Activate Strategy**
-   - Toggle the switch next to any strategy to activate it
-   - When activated, auto-trading is automatically enabled
-   - The strategy will execute trades when conditions are met
-
-### Monitoring Trades
-
-- **Trades History Tab**: View all executed trades
-- **Positions Tab**: Monitor open positions and P&L
-- **Risk Metrics Tab**: Track performance metrics (win rate, Sharpe ratio, drawdown)
-- **Terminal Logs**: Real-time system logs and analysis results
-
-## 🏗️ Architecture
-
-### Backend Components
-
-- **`api_server.py`**: FastAPI server with all endpoints
-- **`core/llm_brain.py`**: Gemini AI integration for trading decisions
-- **`core/ml_analyst.py`**: RandomForest ML model for price prediction
-- **`core/sentiment.py`**: FinBERT sentiment analysis
-- **`core/strategy_evaluator.py`**: Dynamic strategy evaluation engine
-- **`core/weex_api.py`**: WEEX exchange API client
-- **`core/db_manager.py`**: PostgreSQL database management
-- **`core/analysis.py`**: Technical analysis and market structure
-
-### Frontend Components
-
-- **React + TypeScript**: Modern UI framework
-- **TradingView Charts**: Real-time candlestick charts
-- **Shadcn UI**: Component library
-- **Real-time Updates**: WebSocket-like polling for live data
+* **React + TypeScript**
+* TradingView-based charting
+* Real-time system telemetry
+* Strategy and risk management UI
 
 ### Data Flow
 
-1. **Market Data**: Fetched from Binance (public API) for reliability
-2. **ML Training**: RandomForest trains on 500 candles
-3. **Sentiment**: FinBERT analyzes market sentiment
-4. **Strategy Evaluation**: Active strategies checked against market data
-5. **AI Decision**: Gemini synthesizes all inputs for final decision
-6. **Trade Execution**: Orders placed on WEEX exchange
+1. Market data ingestion (Binance public API)
+2. Feature extraction & ML inference
+3. Sentiment analysis
+4. Strategy condition evaluation
+5. AI decision synthesis
+6. Trade execution on WEEX
+7. Logging and metrics persistence
 
-## 🔌 API Endpoints
+---
 
-### Trading
-- `POST /api/trade` - Execute manual trade
-- `POST /api/trade-settings` - Update auto-trading settings
-- `GET /api/trade-settings` - Get current settings
-- `GET /api/trade-history` - Get trade history
-- `GET /api/positions` - Get open positions
-- `GET /api/risk-metrics` - Get risk metrics
+## 6. Impact
 
-### Analysis
-- `POST /api/trigger-analysis` - Trigger on-demand analysis
-- `GET /api/ai-analysis` - Get latest AI analysis
-- `GET /api/candles` - Get candlestick data
-- `GET /api/logs` - Get system logs
+### For Traders
 
-### Strategies
-- `GET /api/strategies` - Get all strategies
-- `POST /api/strategies/{id}/toggle` - Toggle strategy activation
-- `POST /api/create-strategy` - Create new strategy
+* No-code algorithmic trading
+* Faster experimentation and iteration
+* Transparent, controllable automation
 
-### Chat
-- `POST /api/chat` - Chat with Chartor AI
+### For the Ecosystem
 
-## ⚙️ Configuration
+* Democratizes systematic trading
+* Creates a marketplace for strategy logic
+* Bridges discretionary thinking with machine execution
 
-### Trading Modes
-- **Scalping**: 1-minute candles, fast execution
-- **Intraday**: 15-minute candles, balanced approach
-- **Swing**: 4-hour candles, longer-term positions
+### For the Future
 
-### Risk Management
-- **Risk Tolerance**: 0-50% (affects confidence threshold)
-- **Confidence Threshold**: `90 - risk_tolerance` (minimum confidence to execute)
-- **Position Sizing**: Fixed at 10 units (configurable in code)
+Chartor Market is designed to evolve into:
 
-### Strategy Logic Variables
-Available variables for strategy logic:
-- `rsi`: Relative Strength Index (0-100)
-- `price`: Current price (float)
-- `ema_20`: 20-period EMA (float)
-- `volatility`: ATR volatility (float)
-- `trend`: Market trend ('BULLISH', 'BEARISH', 'NEUTRAL')
-- `volume_spike`: Boolean indicating high volume
+* A tradable strategy economy
+* A foundation for agent-to-agent trading
+* A composable financial automation layer
 
-### Example Strategy Logic
-```
-rsi < 30                                    # RSI oversold
-price > ema_20 and trend == 'BULLISH'      # Bullish trend with price above EMA
-volume_spike == True and rsi < 50          # High volume with moderate RSI
-rsi > 70 or price < ema_20                  # Overbought or price below EMA
+---
+
+## 7. Installation & Setup
+
+### Prerequisites
+
+* Python 3.8+
+* Node.js 16+
+* PostgreSQL (Neon recommended)
+* WEEX API credentials
+* Google Gemini API key
+
+### Backend
+
+```bash
+git clone https://github.com/HoomanBuilds/Chartor-Market.git
+cd Chartor-Market
+pip install -r requirements.txt
+python api_server.py
 ```
 
-## 🔒 Security
+### Frontend
 
-- **API Keys**: Stored in `.env` file (never commit to git)
-- **Database**: Uses parameterized queries to prevent SQL injection
-- **Strategy Evaluation**: Safe `eval()` with restricted context
-- **Rate Limiting**: Built-in rate limiting for Gemini API
-
-## 📊 Database Schema
-
-### Tables
-- `trade_settings`: Auto-trading configuration
-- `strategies`: User-defined trading strategies
-- `market_log`: Market analysis logs
-- `ai_analysis`: AI decision history
-- `trade_history`: Executed trades
-- `open_positions`: Current positions
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **"Database connection failed"**
-   - Check `DATABASE_URL` in `.env`
-   - Ensure Neon database is accessible
-
-2. **"WEEX API Error"**
-   - Verify API credentials in `.env`
-   - Check network connectivity
-   - Ensure API keys have trading permissions
-
-3. **"Gemini quota exceeded"**
-   - System automatically uses fallback engine
-   - Wait for cooldown period (1 hour)
-   - Consider upgrading Gemini API plan
-
-4. **Strategies not executing**
-   - Ensure auto-trading is enabled
-   - Check that strategies are activated (toggle ON)
-   - Verify strategy logic syntax
-
-5. **Frontend not connecting**
-   - Check backend is running on port 8000
-   - Verify CORS settings in `api_server.py`
-   - Check browser console for errors
-
-
-### Code Structure
-```
-Chartor-Market/
-├── api_server.py          # Main FastAPI server
-├── core/                   # Core modules
-│   ├── analysis.py        # Technical analysis
-│   ├── db_manager.py      # Database operations
-│   ├── llm_brain.py       # Gemini AI integration
-│   ├── ml_analyst.py      # ML model
-│   ├── sentiment.py       # Sentiment analysis
-│   ├── strategy_evaluator.py  # Strategy evaluation
-│   └── weex_api.py        # WEEX API client
-├── kairos-trading-hub-main/  # Frontend React app
-│   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── pages/         # Page components
-│   │   └── types/         # TypeScript types
-│   └── package.json
-├── requirements.txt       # Python dependencies
-└── README.md             # This file
+```bash
+cd kairos-trading-hub-main
+npm install
+npm run dev
 ```
 
 ---
 
-**⚠️ Disclaimer**: Trading cryptocurrencies involves substantial risk. This software is provided as-is without warranty. Use at your own risk. Past performance does not guarantee future results.
+## 8. API Overview
 
+### Trading
+
+* `POST /api/trade`
+* `GET /api/trade-history`
+* `GET /api/positions`
+* `GET /api/risk-metrics`
+
+### Strategies
+
+* `POST /api/create-strategy`
+* `GET /api/strategies`
+* `POST /api/strategies/{id}/toggle`
+
+### Analysis
+
+* `POST /api/trigger-analysis`
+* `GET /api/ai-analysis`
+* `GET /api/candles`
+
+---
+
+## 9. Security & Safety
+
+* Secrets managed via environment variables
+* Parameterized database queries
+* Restricted strategy execution context
+* AI rate limiting and fallback logic
+
+---
+
+## 10. Disclaimer
+
+This project is a hackathon prototype intended for experimentation and research. Cryptocurrency trading involves significant risk. Use at your own discretion.
+
+---
+
+**Chartor Market is not just a trading bot.
+It is an interface between human strategy and machine execution.**
