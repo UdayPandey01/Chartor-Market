@@ -308,9 +308,15 @@ def sentinel_loop():
                                 side = "buy" if decision == "BUY" else "sell"
                                 order_res = client.place_order(side=side, size=size, symbol=symbol)
                                 
-                                if order_res and order_res.get("code") == "00000":
+                                if order_res and (order_res.get("code") == "00000" or order_res.get("order_id")):
                                     print(f"   Trade Executed Successfully!")
-                                    order_id = str(order_res.get("data", {}).get("orderId", "unknown")) if isinstance(order_res.get("data"), dict) else str(order_res.get("data", "unknown"))
+                                    # Extract order_id from response (can be in data.orderId or directly as order_id)
+                                    if isinstance(order_res.get("data"), dict) and order_res.get("data", {}).get("orderId"):
+                                        order_id = str(order_res.get("data", {}).get("orderId"))
+                                    elif order_res.get("order_id"):
+                                        order_id = str(order_res.get("order_id"))
+                                    else:
+                                        order_id = "unknown"
                                     current_price = float(market_state.get('price', 0))
                                     confluence_note = " [CONFLUENCE]" if ml_agrees else ""
                                     log_message = f"AUTO-EXECUTED {decision} on {symbol}{confluence_note} | Confidence: {confidence}% | ML: {ml_prediction.get('direction') if ml_prediction else 'N/A'} | Sentiment: {sentiment.get('label')} | Order ID: {order_id}"

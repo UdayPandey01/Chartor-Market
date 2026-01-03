@@ -209,8 +209,10 @@ class WeexClient:
         
         if res:
             if isinstance(res, dict):
-                if res.get("code") == "00000" or res.get("status") == "success":
+                if res.get("code") == "00000" or res.get("status") == "success" or res.get("order_id"):
                     print(f"WEEX ORDER SUCCESS: {res}")
+                    if "code" not in res:
+                        res["code"] = "00000"
                     return res
                 else:
                     print(f"WEEX API Error: {res.get('msg', res.get('message', 'Unknown error'))}")
