@@ -41,8 +41,11 @@ class WeexClient:
         signature_b64 = base64.b64encode(signature).decode('utf-8')
         return signature_b64, timestamp
 
-    def _send_weex_request(self, method, endpoint, params=None):
-        """Sends authenticated requests to WEEX (for ordering)"""
+    def _send_weex_request(self, method, endpoint, params=None, use_access_headers=False):
+        """
+        Sends authenticated requests to WEEX (for ordering)
+        use_access_headers: True for /capi/v2/* endpoints (ACCESS-* format), False for /api/contract/* (X-WEEX-* format)
+        """
         if params is None:
             params = {}
             
@@ -57,13 +60,23 @@ class WeexClient:
 
         signature, timestamp = self._generate_signature(method, path, query_string, body_str)
         
-        headers = {
-            "Content-Type": "application/json",
-            "X-WEEX-API-KEY": self.api_key,
-            "X-WEEX-PASSPHRASE": self.passphrase,
-            "X-WEEX-TIMESTAMP": timestamp,
-            "X-WEEX-SIGNATURE": signature
-        }
+        if use_access_headers:
+            headers = {
+                "Content-Type": "application/json",
+                "ACCESS-KEY": self.api_key,
+                "ACCESS-SIGN": signature,
+                "ACCESS-PASSPHRASE": self.passphrase,
+                "ACCESS-TIMESTAMP": timestamp,
+                "locale": "zh-CN"
+            }
+        else:
+            headers = {
+                "Content-Type": "application/json",
+                "X-WEEX-API-KEY": self.api_key,
+                "X-WEEX-PASSPHRASE": self.passphrase,
+                "X-WEEX-TIMESTAMP": timestamp,
+                "X-WEEX-SIGNATURE": signature
+            }
         
         url = f"{self.base_url}{path}"
         
@@ -135,10 +148,10 @@ class WeexClient:
         
         params = {
             "symbol": symbol,
-            "side": 1 if side.lower() == "buy" else 2,  # 1=Buy, 2=Sell
-            "type": 2,          # 2 = Market Order
-            "quantity": str(size),   # Amount in Contracts
-            "leverage": 10      # Safety leverage
+            "side": 1 if side.lower() == "buy" else 2,  
+            "type": 2,        
+            "quantity": str(size),  
+            "leverage": 10    
         }
         
         print(f"Sending Order to WEEX: {params}")
@@ -182,16 +195,17 @@ class WeexClient:
             "match_price": "1"
         }
         
-        print(f"📤 Closing Position on WEEX: {payload}")
+        print(f"Closing Position on WEEX: {payload}")
         res = self._send_weex_request("POST", endpoint, payload)
-        print(f"📥 WEEX Close Position Response: {res}")
+        print(f"WEEX Close Position Response: {res}")
         return res
     
     def get_balance(self):
         """
-        Fetches Hackathon Test Funds (Futures Wallet)
+        Fetches account assets/balance using /capi/v2/account/assets endpoint
+        Automatically uses ACCESS-* header format
         """
-        endpoint = "/api/contract/Account_API/GetAccountBalance"
+        endpoint = "/capi/v2/account/assets"
         return self._send_weex_request("GET", endpoint)
     
     def set_leverage(self, symbol="cmt_btcusdt", leverage=10):
@@ -207,7 +221,7 @@ class WeexClient:
         return self._send_weex_request("POST", endpoint, params)
     
     def get_positions(self):
-        """Fetches all open positions from WEEX."""
+        """Fetches all open positions from WEEX. Automatically uses ACCESS-* headers for /capi/v2/* endpoints."""
         endpoint = "/capi/v2/position/list"
         res = self._send_weex_request("GET", endpoint)
         return res
