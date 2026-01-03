@@ -13,7 +13,6 @@ load_dotenv()
 
 class WeexClient:
     def __init__(self, api_key=None, secret_key=None, passphrase=None):
-        # Support both constructor args and env vars
         self.api_key = api_key or os.getenv("WEEX_API_KEY")
         self.secret_key = secret_key or os.getenv("WEEX_SECRET")
         self.passphrase = passphrase or os.getenv("WEEX_PASSPHRASE")
@@ -21,30 +20,34 @@ class WeexClient:
         self.base_url = "https://api-contract.weex.com"
 
     def _generate_signature(self, method, path, query_string="", body=""):
+        """
+        Generate signature according to WEEX API spec
+        GET: timestamp + METHOD + path + query_string
+        POST: timestamp + METHOD + path + query_string + body (as string)
+        """
         timestamp = str(int(time.time() * 1000))
         
-        # Build pre-hash string according to WEEX API spec
         if method == "GET":
-            if query_string:
-                pre_hash = f"{timestamp}{method.upper()}{path}?{query_string}"
-            else:
-                pre_hash = f"{timestamp}{method.upper()}{path}"
+            message = timestamp + method.upper() + path + query_string
         else:
-            pre_hash = f"{timestamp}{method.upper()}{path}{body}"
+            message = timestamp + method.upper() + path + query_string + str(body)
         
         signature = hmac.new(
             self.secret_key.encode('utf-8'),
-            pre_hash.encode('utf-8'),
+            message.encode('utf-8'),
             hashlib.sha256
         ).digest()
         
         signature_b64 = base64.b64encode(signature).decode('utf-8')
         return signature_b64, timestamp
 
-    def _send_weex_request(self, method, endpoint, params=None, use_access_headers=False):
+    def _send_weex_request(self, method, endpoint, params=None, use_access_headers=None):
         """
         Sends authenticated requests to WEEX (for ordering)
-        use_access_headers: True for /capi/v2/* endpoints (ACCESS-* format), False for /api/contract/* (X-WEEX-* format)
+        Automatically detects header format based on endpoint:
+        - /capi/v2/account/* and /capi/v2/order/* -> ACCESS-* headers
+        - /api/contract/* -> X-WEEX-* headers
+        use_access_headers: Override auto-detection (True/False) or None for auto-detect
         """
         if params is None:
             params = {}
@@ -54,20 +57,26 @@ class WeexClient:
         body_str = ""
 
         if method == "GET" and params:
-            query_string = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
+            query_string = "?" + "&".join([f"{k}={v}" for k, v in sorted(params.items())])
         elif method == "POST" and params:
             body_str = json.dumps(params)
+        else:
+            body_str = "" 
 
         signature, timestamp = self._generate_signature(method, path, query_string, body_str)
         
+        # Auto-detect header format based on endpoint if not explicitly set
+        if use_access_headers is None:
+            use_access_headers = endpoint.startswith("/capi/v2/account/") or endpoint.startswith("/capi/v2/order/") or endpoint.startswith("/capi/v2/position/")
+        
         if use_access_headers:
             headers = {
-                "Content-Type": "application/json",
                 "ACCESS-KEY": self.api_key,
                 "ACCESS-SIGN": signature,
-                "ACCESS-PASSPHRASE": self.passphrase,
                 "ACCESS-TIMESTAMP": timestamp,
-                "locale": "zh-CN"
+                "ACCESS-PASSPHRASE": self.passphrase,
+                "Content-Type": "application/json",
+                "locale": "en-US" 
             }
         else:
             headers = {
@@ -82,9 +91,10 @@ class WeexClient:
         
         try:
             if method == "GET":
-                res = requests.get(url, headers=headers, params=params if params else None, timeout=5)
+                full_url = url + query_string if query_string else url
+                res = requests.get(full_url, headers=headers, timeout=5)
             else:
-                res = requests.post(url, headers=headers, json=params if params else {}, timeout=5)
+                res = requests.post(url, headers=headers, data=body_str, timeout=5)
             
             if res.status_code != 200:
                 print(f"WEEX API Error {res.status_code}: {res.text[:200] if res.text else 'No response body'}")
@@ -139,20 +149,57 @@ class WeexClient:
         print("Network Blocked. Using Simulation Data.")
         return self._generate_mock_candles(limit)
 
-    def place_order(self, side="buy", size="10", symbol="cmt_dogeusdt"):
+    def place_order(self, side="buy", size="10", symbol="cmt_btcusdt", order_type="market", price=None, 
+                    client_oid=None, preset_take_profit=None, preset_stop_loss=None):
         """
-        Executes Trade on WEEX (Authenticated)
-        Uses the new Contract API format
+        Places an order on WEEX using /capi/v2/order/placeOrder endpoint
+        Automatically uses ACCESS-* headers
+        
+        Args:
+            side: "buy" or "sell"
+            size: Order size (as string)
+            symbol: Trading pair (e.g., "cmt_btcusdt")
+            order_type: "market" (0) or "limit" (1). Default: "market"
+            price: Price for limit orders (required if order_type="limit")
+            client_oid: Client order ID (optional, auto-generated if not provided)
+            preset_take_profit: Take profit price (optional)
+            preset_stop_loss: Stop loss price (optional)
         """
-        endpoint = "/api/contract/Transaction_API/PlaceOrder"
+        import uuid
+        
+        endpoint = "/capi/v2/order/placeOrder"
+        
+        if client_oid is None:
+            client_oid = str(uuid.uuid4()).replace("-", "")[:16]
+        
+        if order_type.lower() == "market":
+            order_type_code = "1"
+            match_price = "1"
+            if price is None:
+                price = "0"  
+        else:
+            order_type_code = "0"
+            match_price = "0"
+            if price is None:
+                raise ValueError("Price is required for limit orders")
+        
+        type_code = "1" if side.lower() == "buy" else "2"
         
         params = {
             "symbol": symbol,
-            "side": 1 if side.lower() == "buy" else 2,  
-            "type": 2,        
-            "quantity": str(size),  
-            "leverage": 10    
+            "client_oid": client_oid,
+            "size": str(size),
+            "type": type_code,
+            "order_type": order_type_code,
+            "match_price": match_price,
+            "price": str(price)
         }
+        
+        # Add optional parameters
+        if preset_take_profit:
+            params["presetTakeProfitPrice"] = str(preset_take_profit)
+        if preset_stop_loss:
+            params["presetStopLossPrice"] = str(preset_stop_loss)
         
         print(f"Sending Order to WEEX: {params}")
         
@@ -178,27 +225,67 @@ class WeexClient:
         """Alias for place_order to support sentinel_service.py"""
         return self.place_order(side, size, symbol)
     
-    def close_position(self, symbol, side, size=None):
+    def cancel_order(self, order_id, symbol=None):
         """
-        Closes an existing position.
-        side: 'buy' to close short, 'sell' to close long
-        """
-        endpoint = "/capi/v2/order/placeOrder"
-        type_code = "4" if side.lower() == "buy" else "3"
+        Cancels an order using /capi/v2/order/cancel_order endpoint
+        Automatically uses ACCESS-* headers
         
-        payload = {
-            "symbol": symbol,
-            "side": side.lower(),
-            "orderType": "market",
-            "size": str(size) if size else "10",
-            "type": type_code,
-            "match_price": "1"
+        Args:
+            order_id: Order ID to cancel
+            symbol: Trading pair (optional, but recommended)
+        """
+        endpoint = "/capi/v2/order/cancel_order"
+        
+        params = {
+            "orderId": str(order_id)
         }
         
-        print(f"Closing Position on WEEX: {payload}")
-        res = self._send_weex_request("POST", endpoint, payload)
-        print(f"WEEX Close Position Response: {res}")
+        if symbol:
+            params["symbol"] = symbol
+        
+        print(f"Cancelling Order on WEEX: {params}")
+        res = self._send_weex_request("POST", endpoint, params)
+        print(f"WEEX Cancel Order Response: {res}")
         return res
+    
+    def batch_orders(self, symbol, order_data_list, margin_mode=1):
+        """
+        Places multiple orders in a single request using /capi/v2/order/batchOrders
+        Automatically uses ACCESS-* headers
+        
+        Args:
+            symbol: Trading pair
+            order_data_list: List of order dictionaries (max 20 orders)
+            margin_mode: 1=Cross Mode, 3=Isolated Mode (default: 1)
+        """
+        endpoint = "/capi/v2/order/batchOrders"
+        
+        if len(order_data_list) > 20:
+            raise ValueError("Maximum 20 orders allowed in batch")
+        
+        params = {
+            "symbol": symbol,
+            "marginMode": margin_mode,
+            "orderDataList": order_data_list
+        }
+        
+        print(f"Sending Batch Orders to WEEX: {len(order_data_list)} orders")
+        res = self._send_weex_request("POST", endpoint, params)
+        print(f"WEEX Batch Orders Response: {res}")
+        return res
+    
+    def close_position(self, symbol, side, size=None):
+        """
+        Closes an existing position using market order.
+        side: 'buy' to close short, 'sell' to close long
+        Uses place_order with market order type
+        """
+        return self.place_order(
+            side=side,
+            size=str(size) if size else "10",
+            symbol=symbol,
+            order_type="market"
+        )
     
     def get_balance(self):
         """
