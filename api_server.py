@@ -206,16 +206,12 @@ def sentinel_loop():
                             is_safe = False
                         
                         if is_safe:
-                            # For strategy-based trades, skip ML confluence check (user-defined rules take priority)
-                            # Only check confluence for Gemini AI decisions
                             should_execute = True
                             ml_agrees = False
                             
                             if strategy_name:
-                                # Strategy-based trade - execute immediately (user defined the rule)
                                 print(f"   STRATEGY TRADE: Executing based on user-defined strategy '{strategy_name}'")
                             else:
-                                # Gemini AI decision - check for ML confluence
                                 if ml_prediction:
                                     ml_dir = ml_prediction.get('direction', 'UNKNOWN')
                                     ml_agrees = (decision == "BUY" and ml_dir == "UP") or (decision == "SELL" and ml_dir == "DOWN")
@@ -225,7 +221,6 @@ def sentinel_loop():
                                     log_message = f"Confluence check failed: Gemini {decision} vs ML {ml_prediction.get('direction')}. Waiting for alignment."
                                     should_execute = False
                                     
-                                    # Log the conflict
                                     try:
                                         conn = get_db_connection()
                                         if conn:
@@ -252,9 +247,65 @@ def sentinel_loop():
                                         print(f"   CONFLUENCE DETECTED! ML and Gemini agree on {decision}")
                             
                             if should_execute:
+                                try:
+                                    balance_data = client.get_balance()
+                                    available_usdt = 0
+                                    
+                                    if balance_data:
+                                        if isinstance(balance_data, list):
+                                            for asset in balance_data:
+                                                if asset.get('coinName') == 'USDT':
+                                                    available_usdt = float(asset.get('available', 0))
+                                                    break
+                                        elif isinstance(balance_data, dict):
+                                            if balance_data.get('coinName') == 'USDT':
+                                                available_usdt = float(balance_data.get('available', 0))
+                                    
+                                    position_size_usdt = min(max(available_usdt * 0.03, 5), 30)
+                                    
+                                    current_price = float(market_state.get('price', 0))
+                                    if current_price > 0:
+                                        contract_size = position_size_usdt / current_price
+                                        contract_size = max(round(contract_size, 4), 0.001)
+                                        size = str(contract_size)
+                                    else:
+                                        size = "0.001"  
+                                    
+                                    print(f"   Balance: {available_usdt:.2f} USDT | Position Size: {size} contracts (~{position_size_usdt:.2f} USDT)")
+                                    
+                                    if available_usdt < 1:
+                                        print(f"   INSUFFICIENT BALANCE: Only {available_usdt:.2f} USDT available. Skipping trade.")
+                                        log_message = f"INSUFFICIENT BALANCE: {available_usdt:.2f} USDT available. Need at least 1 USDT."
+                                        try:
+                                            conn = get_db_connection()
+                                            if conn:
+                                                cur = conn.cursor()
+                                                cur.execute("""
+                                                    INSERT INTO market_log (trend, structure, price, rsi, decision, confidence, reason)
+                                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                                """, (
+                                                    str(market_state.get('trend', 'Neutral')),
+                                                    'Balance-Check',
+                                                    float(market_state.get('price', 0)),
+                                                    float(market_state.get('rsi', 50)),
+                                                    "WAIT-INSUFFICIENT-BALANCE",
+                                                    0,
+                                                    log_message
+                                                ))
+                                                conn.commit()
+                                                cur.close()
+                                                conn.close()
+                                        except:
+                                            pass
+                                        time.sleep(30)
+                                        continue
+                                    
+                                except Exception as balance_err:
+                                    print(f"   Balance check error: {balance_err}. Using default size.")
+                                    size = "0.01"  
+                                
                                 print(f"   AUTO-EXECUTING {decision} ORDER...")
                                 side = "buy" if decision == "BUY" else "sell"
-                                size = "10"
                                 order_res = client.place_order(side=side, size=size, symbol=symbol)
                                 
                                 if order_res and order_res.get("code") == "00000":
@@ -264,10 +315,8 @@ def sentinel_loop():
                                     confluence_note = " [CONFLUENCE]" if ml_agrees else ""
                                     log_message = f"AUTO-EXECUTED {decision} on {symbol}{confluence_note} | Confidence: {confidence}% | ML: {ml_prediction.get('direction') if ml_prediction else 'N/A'} | Sentiment: {sentiment.get('label')} | Order ID: {order_id}"
                                     
-                                    # Save trade to history and update position
-                                    from core.db_manager import save_trade, update_or_create_position
+                                    from core.db_manager import save_trade, update_or_create_position, get_trade_history
                                     
-                                    # Build notes with strategy info if applicable
                                     notes_parts = []
                                     if strategy_name:
                                         notes_parts.append(f"Strategy: {strategy_name}")
@@ -275,6 +324,9 @@ def sentinel_loop():
                                         notes_parts.append(f"Hybrid Auto-trade: {decision} at {confidence}%")
                                     notes_parts.append(f"ML: {ml_prediction.get('direction') if ml_prediction else 'N/A'}")
                                     notes_parts.append(f"Sentiment: {sentiment.get('label')}")
+                                    
+                                    # Calculate position value in USDT for tracking
+                                    position_value_usdt = float(size) * current_price
                                     
                                     save_trade({
                                         "symbol": symbol,
@@ -284,8 +336,17 @@ def sentinel_loop():
                                         "order_id": order_id,
                                         "order_type": "market",
                                         "status": "filled",
-                                        "notes": " | ".join(notes_parts)
+                                        "notes": " | ".join(notes_parts) + f" | Position Value: ${position_value_usdt:.2f}"
                                     })
+                                    
+                                    # Check profitable trades count
+                                    try:
+                                        all_trades = get_trade_history(limit=1000)
+                                        profitable_trades = [t for t in all_trades if t.get('pnl') and float(t.get('pnl', 0)) > 0]
+                                        profitable_count = len(profitable_trades)
+                                        print(f"   Profitable Trades: {profitable_count}/15 required")
+                                    except:
+                                        pass
                                     
                                     update_or_create_position({
                                         "symbol": symbol,
