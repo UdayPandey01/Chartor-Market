@@ -393,6 +393,67 @@ class WeexClient:
         res = self._send_weex_request("GET", endpoint, params if params else None)
         return res
     
+    def get_history_orders(self, symbol=None, page_size=100, create_date=None, end_create_date=None):
+        """
+        Gets history orders using /capi/v2/order/history endpoint
+        Weight(IP): 10, Weight(UID): 10
+        
+        Args:
+            symbol: Trading pair (optional)
+            page_size: Items per page (optional)
+            create_date: The record start time for the query (Unix millisecond timestamp, optional)
+                        Must be ≤ 90 days and cannot be negative
+            end_create_date: The end time of the record for the query (Unix millisecond timestamp, optional)
+                            Must be ≤ 90 days and cannot be negative
+        """
+        endpoint = "/capi/v2/order/history"
+        params = {}
+        if symbol:
+            params["symbol"] = symbol
+        if page_size:
+            params["pageSize"] = str(page_size)
+        if create_date:
+            params["createDate"] = str(create_date)
+        if end_create_date:
+            params["endCreateDate"] = str(end_create_date)
+        
+        res = self._send_weex_request("GET", endpoint, params if params else None)
+        return res
+    
+    def upload_ai_log(self, order_id=None, stage="Strategy Generation", model="Gemini-2.0", 
+                      input_data=None, output_data=None, explanation=""):
+        """
+        Uploads AI log to WEEX using /capi/v2/order/uploadAiLog endpoint
+        Weight(IP): 1, Weight(UID): 1
+        
+        Required for live trading phase to verify AI involvement and compliance.
+        
+        Args:
+            order_id: The order ID returned from WEEX order API (optional)
+            stage: The trading stage where AI participated (e.g., "Strategy Generation", "Decision Making")
+            model: The name or version of the AI model used (e.g., "GPT-4-turbo", "Gemini-2.0")
+            input_data: The prompt, query, or input given to the AI model (dict/JSON)
+            output_data: The AI model's generated output (dict/JSON)
+            explanation: A concise explanation of the AI's analysis (max 1000 characters)
+        """
+        endpoint = "/capi/v2/order/uploadAiLog"
+        
+        params = {
+            "stage": stage,
+            "model": model,
+            "input": input_data or {},
+            "output": output_data or {},
+            "explanation": explanation[:1000]  # Max 1000 characters
+        }
+        
+        if order_id:
+            params["orderId"] = order_id
+        
+        print(f"Uploading AI Log to WEEX: Stage={stage}, Model={model}")
+        res = self._send_weex_request("POST", endpoint, params)
+        print(f"WEEX AI Log Upload Response: {res}")
+        return res
+    
     def close_all_positions(self):
         """Closes all open positions."""
         try:

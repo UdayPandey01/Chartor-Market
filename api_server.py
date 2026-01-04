@@ -317,6 +317,43 @@ def sentinel_loop():
                                         order_id = str(order_res.get("order_id"))
                                     else:
                                         order_id = "unknown"
+                                    
+                                    # Upload AI log to WEEX for compliance
+                                    try:
+                                        ai_log_input = {
+                                            "market_data": {
+                                                "symbol": symbol,
+                                                "price": float(market_state.get('price', 0)),
+                                                "rsi": float(market_state.get('rsi', 50)),
+                                                "trend": str(market_state.get('trend', 'Neutral')),
+                                                "volume": market_state.get('volume', 0)
+                                            },
+                                            "ml_prediction": ml_prediction if ml_prediction else {},
+                                            "sentiment": sentiment if sentiment else {},
+                                            "prompt": f"Analyze {symbol} market data and provide trading decision"
+                                        }
+                                        
+                                        ai_log_output = {
+                                            "decision": decision,
+                                            "confidence": confidence,
+                                            "reasoning": reasoning[:500] if reasoning else "",
+                                            "ml_agrees": ml_agrees,
+                                            "strategy": strategy_name or "Hybrid Auto-Trade"
+                                        }
+                                        
+                                        explanation = f"AI analyzed {symbol} with RSI {market_state.get('rsi', 50):.1f}, trend {market_state.get('trend', 'Neutral')}. Decision: {decision} with {confidence}% confidence. ML model {('agreed' if ml_agrees else 'disagreed')}. Reasoning: {reasoning[:400] if reasoning else 'N/A'}"
+                                        
+                                        client.upload_ai_log(
+                                            order_id=order_id,
+                                            stage="Decision Making",
+                                            model="Gemini-2.0-Flash-Thinking",
+                                            input_data=ai_log_input,
+                                            output_data=ai_log_output,
+                                            explanation=explanation
+                                        )
+                                        print(f"   AI Log uploaded for order {order_id}")
+                                    except Exception as ai_log_err:
+                                        print(f"   AI Log upload failed: {ai_log_err}")
                                     current_price = float(market_state.get('price', 0))
                                     confluence_note = " [CONFLUENCE]" if ml_agrees else ""
                                     log_message = f"AUTO-EXECUTED {decision} on {symbol}{confluence_note} | Confidence: {confidence}% | ML: {ml_prediction.get('direction') if ml_prediction else 'N/A'} | Sentiment: {sentiment.get('label')} | Order ID: {order_id}"
@@ -912,6 +949,38 @@ def execute_trade(action: str = None, symbol: str = None):
                 "order_id": order_id
             })
             
+            # Upload AI log to WEEX for compliance
+            try:
+                ai_log_input = {
+                    "market_data": {
+                        "symbol": symbol,
+                        "price": current_price,
+                        "action": action.upper()
+                    },
+                    "prompt": f"Execute manual {action.upper()} trade on {symbol}"
+                }
+                
+                ai_log_output = {
+                    "decision": action.upper(),
+                    "execution_type": "manual",
+                    "order_id": order_id,
+                    "price": current_price
+                }
+                
+                explanation = f"Manual trade execution: {action.upper()} {size} units of {symbol} at ${current_price:.2f}. Order placed via user interface with AI system oversight."
+                
+                client.upload_ai_log(
+                    order_id=order_id,
+                    stage="Strategy Execution",
+                    model="Gemini-2.0-Flash-Thinking",
+                    input_data=ai_log_input,
+                    output_data=ai_log_output,
+                    explanation=explanation
+                )
+                print(f"AI Log uploaded for manual trade order {order_id}")
+            except Exception as ai_log_err:
+                print(f"AI Log upload failed: {ai_log_err}")
+            
             # Log success
             log_market_state(
                 f"TRADE-{action.upper()}",
@@ -1204,63 +1273,85 @@ def force_close_all():
         return {"status": "error", "msg": str(e)}
 
 @app.get("/api/trade-history")
-def get_trade_history(limit: int = 100, symbol: str = None):
+def get_trade_history_endpoint(limit: int = 100, symbol: str = None):
     """
-    Fetches current orders from WEEX API using /capi/v2/order/current
+    Fetches trade history from WEEX API using /capi/v2/order/history
+    This returns completed/filled orders, not pending ones.
     """
     try:
-        # Call WEEX API to get current orders
-        weex_orders = client.get_current_orders(symbol=symbol, limit=limit)
+        # Calculate time range (last 90 days max as per WEEX API)
+        import time
+        end_time = int(time.time() * 1000)  # Current time in milliseconds
+        start_time = end_time - (89 * 24 * 60 * 60 * 1000)  # 89 days ago
         
-        if not weex_orders:
+        # Call WEEX API to get history orders (completed trades)
+        weex_history = client.get_history_orders(
+            symbol=symbol, 
+            page_size=min(limit, 100),
+            create_date=start_time,
+            end_create_date=end_time
+        )
+        
+        if not weex_history:
             return {"status": "success", "trades": [], "count": 0}
         
-        # Handle different response formats
+        # Handle response format
         orders_data = []
-        if isinstance(weex_orders, list):
-            orders_data = weex_orders
-        elif isinstance(weex_orders, dict):
-            if weex_orders.get("code") == "00000" and weex_orders.get("data"):
-                orders_data = weex_orders.get("data", [])
-            elif isinstance(weex_orders.get("data"), list):
-                orders_data = weex_orders.get("data", [])
+        if isinstance(weex_history, dict):
+            if weex_history.get("code") == "00000" and weex_history.get("data"):
+                data = weex_history.get("data", {})
+                # Handle both list and paginated responses
+                if isinstance(data, list):
+                    orders_data = data
+                elif isinstance(data, dict):
+                    orders_data = data.get("orderList", []) or data.get("list", []) or []
+            else:
+                print(f"WEEX History API Response: {weex_history}")
+        elif isinstance(weex_history, list):
+            orders_data = weex_history
         
         formatted_trades = []
         for order in orders_data:
             try:
-                order_id = str(order.get("order_id", ""))
+                order_id = str(order.get("orderId", "") or order.get("order_id", ""))
                 symbol_order = order.get("symbol", "")
-                order_type = order.get("type", "")
+                order_type = str(order.get("type", ""))
                 
-                # Convert order type to side (open_long -> buy, open_short -> sell)
+                # Convert order type to side
+                # type: 1=open_long(buy), 2=open_short(sell), 3=close_long(sell), 4=close_short(buy)
                 side = "buy"
-                if "short" in order_type.lower() or "sell" in order_type.lower():
+                if order_type in ["2", "3"] or "short" in order_type.lower() or "sell" in order_type.lower():
                     side = "sell"
-                elif "long" in order_type.lower() or "buy" in order_type.lower():
+                elif order_type in ["1", "4"] or "long" in order_type.lower() or "buy" in order_type.lower():
                     side = "buy"
                 
-                size = float(order.get("size", 0))
-                price_avg = order.get("price_avg")
-                price = order.get("price")
+                size = float(order.get("size", 0) or 0)
                 
-                # Use price_avg if available (filled orders), otherwise use price (pending orders)
+                # Use priceAvg for filled orders
+                price_avg = order.get("priceAvg") or order.get("price_avg")
+                price = order.get("price")
                 execution_price = float(price_avg) if price_avg and float(price_avg) > 0 else (float(price) if price else None)
                 
-                status = order.get("status", "open")
-                fee = float(order.get("fee", 0)) if order.get("fee") else 0
-                total_profits = float(order.get("totalProfits", 0)) if order.get("totalProfits") else None
+                status = order.get("status", "filled")
+                fee = float(order.get("fee", 0) or 0)
                 
-                create_time = order.get("createTime")
+                # Get PnL from various possible fields
+                pnl = order.get("totalProfits") or order.get("pnl") or order.get("profit")
+                pnl_value = float(pnl) if pnl and str(pnl) not in ["", "null", "None"] else None
+                
+                # Get timestamps
+                create_time = order.get("cTime") or order.get("createTime") or order.get("created_at")
                 execution_time = ""
                 if create_time:
                     from datetime import datetime
                     try:
                         # Convert milliseconds timestamp to ISO string
-                        execution_time = datetime.fromtimestamp(int(create_time) / 1000).isoformat()
+                        timestamp_ms = int(create_time)
+                        execution_time = datetime.fromtimestamp(timestamp_ms / 1000).isoformat()
                     except:
                         execution_time = str(create_time)
                 
-                # Generate a numeric ID from order_id (fallback to hash)
+                # Generate a numeric ID
                 numeric_id = 0
                 try:
                     if order_id and order_id.isdigit():
@@ -1278,7 +1369,7 @@ def get_trade_history(limit: int = 100, symbol: str = None):
                     "price": execution_price,
                     "order_id": order_id,
                     "status": status,
-                    "pnl": total_profits,
+                    "pnl": pnl_value,
                     "fees": fee if fee > 0 else None,
                     "execution_time": execution_time,
                     "notes": f"Order type: {order_type}"
