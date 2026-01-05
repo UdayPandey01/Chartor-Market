@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Clock, DollarSign, Activity } from "lucide-react";
+import { getApiUrl } from "@/lib/api";
 
 interface Trade {
   id: number;
@@ -35,9 +36,9 @@ export function TradesHistoryTab() {
 
   const fetchTrades = async () => {
     try {
-      const response = await fetch("/api/trade-history?limit=100");
+      const response = await fetch(getApiUrl("/api/trade-history?limit=100"));
       const data = await response.json();
-      
+
       if (data.status === "success" && data.trades) {
         setTrades(data.trades);
         calculateStats(data.trades);
@@ -53,12 +54,12 @@ export function TradesHistoryTab() {
     const tradesWithPnL = tradesList.filter(t => t.pnl !== null);
     const wins = tradesWithPnL.filter(t => (t.pnl || 0) > 0);
     const losses = tradesWithPnL.filter(t => (t.pnl || 0) < 0);
-    
+
     const totalPnL = tradesWithPnL.reduce((sum, t) => sum + (t.pnl || 0), 0);
     const winRate = tradesWithPnL.length > 0 ? (wins.length / tradesWithPnL.length) * 100 : 0;
     const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + (t.pnl || 0), 0) / wins.length : 0;
     const avgLoss = losses.length > 0 ? losses.reduce((sum, t) => sum + (t.pnl || 0), 0) / losses.length : 0;
-    
+
     setStats({
       totalTrades: tradesList.length,
       winRate: Math.round(winRate * 10) / 10,
@@ -77,11 +78,11 @@ export function TradesHistoryTab() {
 
   const formatTime = (timeStr: string) => {
     const date = new Date(timeStr);
-    return date.toLocaleString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -177,8 +178,8 @@ export function TradesHistoryTab() {
                     </span>
                     <span className={cn(
                       "text-xs px-2 py-0.5 rounded-full font-medium",
-                      trade.side === "buy" 
-                        ? "bg-success/20 text-success" 
+                      trade.side === "buy"
+                        ? "bg-success/20 text-success"
                         : "bg-destructive/20 text-destructive"
                     )}>
                       {trade.side.toUpperCase()}
@@ -193,7 +194,7 @@ export function TradesHistoryTab() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mb-2">
                   <div className="flex items-center gap-1">
                     <DollarSign className="w-3 h-3" />
@@ -204,13 +205,13 @@ export function TradesHistoryTab() {
                     <span>Price: {formatPrice(trade.price)}</span>
                   </div>
                 </div>
-                
+
                 {trade.notes && (
                   <div className="text-xs text-muted-foreground/60 mb-2 line-clamp-2">
                     {trade.notes}
                   </div>
                 )}
-                
+
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />

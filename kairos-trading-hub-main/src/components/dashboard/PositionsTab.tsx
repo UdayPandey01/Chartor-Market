@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, DollarSign, X, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getApiUrl } from "@/lib/api";
 
 interface Position {
   id: number;
@@ -28,12 +29,12 @@ export function PositionsTab() {
 
   const fetchPositions = async () => {
     try {
-      const response = await fetch("/api/positions");
+      const response = await fetch(getApiUrl("/api/positions"));
       const data = await response.json();
-      
+
       if (data.status === "success" && data.positions) {
         setPositions(data.positions);
-        const total = data.positions.reduce((sum: number, p: Position) => 
+        const total = data.positions.reduce((sum: number, p: Position) =>
           sum + (p.unrealized_pnl || 0), 0
         );
         setTotalUnrealizedPnL(total);
@@ -49,12 +50,12 @@ export function PositionsTab() {
     try {
       // This would call an API endpoint to close the position
       // For now, we'll just show a message
-      const response = await fetch("/api/close-position", {
+      const response = await fetch(getApiUrl("/api/close-position"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol, side })
       });
-      
+
       const result = await response.json();
       if (result.status === "success") {
         fetchPositions(); // Refresh
@@ -77,7 +78,7 @@ export function PositionsTab() {
 
   const calculatePnLPercent = (entry: number, current: number | null, side: string) => {
     if (!current || entry === 0) return 0;
-    const change = side === "buy" 
+    const change = side === "buy"
       ? ((current - entry) / entry) * 100
       : ((entry - current) / entry) * 100;
     return Math.round(change * 100) / 100;
@@ -142,14 +143,14 @@ export function PositionsTab() {
           <div className="space-y-3">
             {positions.map((position) => {
               const pnlPercent = calculatePnLPercent(position.entry_price, position.current_price, position.side);
-              
+
               return (
                 <div
                   key={position.id}
                   className={cn(
                     "rounded-lg p-4 border transition-all hover:bg-card/50",
-                    position.side === "buy" 
-                      ? "border-success/20 bg-success/5" 
+                    position.side === "buy"
+                      ? "border-success/20 bg-success/5"
                       : "border-destructive/20 bg-destructive/5"
                   )}
                 >
@@ -178,7 +179,7 @@ export function PositionsTab() {
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div className="bg-background/50 rounded p-2">
                       <div className="text-[10px] text-muted-foreground uppercase mb-1">Entry</div>
@@ -189,7 +190,7 @@ export function PositionsTab() {
                       <div className="text-sm font-mono text-foreground">{formatPrice(position.current_price)}</div>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-[10px] text-muted-foreground uppercase">Unrealized P&L</div>

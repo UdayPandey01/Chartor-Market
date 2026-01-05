@@ -5,6 +5,7 @@ import { Target, Play, Pause, RefreshCw, AlertCircle, Plus, X } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { getApiUrl } from "@/lib/api";
 
 interface Strategy {
   id: number;
@@ -38,7 +39,7 @@ export function StrategiesTab() {
 
   const fetchStrategies = async () => {
     try {
-      const response = await fetch("/api/strategies");
+      const response = await fetch(getApiUrl("/api/strategies"));
       const data = await response.json();
 
       if (data.status === "success" && data.strategies) {
@@ -54,7 +55,7 @@ export function StrategiesTab() {
   const toggleStrategy = async (strategyId: number, currentStatus: boolean) => {
     setTogglingId(strategyId);
     try {
-      const response = await fetch(`/api/strategies/${strategyId}/toggle`, {
+      const response = await fetch(getApiUrl(`/api/strategies/${strategyId}/toggle`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active: !currentStatus })
@@ -83,7 +84,7 @@ export function StrategiesTab() {
 
     setCreating(true);
     try {
-      const response = await fetch("/api/create-strategy", {
+      const response = await fetch(getApiUrl("/api/create-strategy"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

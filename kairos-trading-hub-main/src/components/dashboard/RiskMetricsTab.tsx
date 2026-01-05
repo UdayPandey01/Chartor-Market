@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, BarChart3, AlertTriangle, Target } from "lucide-react";
+import { getApiUrl } from "@/lib/api";
 
 interface RiskMetrics {
   totalTrades: number;
@@ -26,9 +27,9 @@ export function RiskMetricsTab() {
 
   const fetchMetrics = async () => {
     try {
-      const response = await fetch("/api/risk-metrics");
+      const response = await fetch(getApiUrl("/api/risk-metrics"));
       const data = await response.json();
-      
+
       if (data.status === "success" && data.metrics) {
         setMetrics(data.metrics);
       }

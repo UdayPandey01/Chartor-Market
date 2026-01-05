@@ -11,6 +11,7 @@ import { PositionsTab } from "@/components/dashboard/PositionsTab";
 import { RiskMetricsTab } from "@/components/dashboard/RiskMetricsTab";
 import { Asset, TradingMode, LogEntry, ChatMessage } from "@/types/trading";
 import { toast } from "@/hooks/use-toast";
+import { getApiUrl } from "@/lib/api";
 
 const INITIAL_LOGS: LogEntry[] = [
   { id: '1', timestamp: new Date(Date.now() - 5000), type: 'system', message: 'CHARTOR v2.4.1 initialized successfully' },
@@ -47,7 +48,7 @@ const Index = () => {
   useEffect(() => {
     const fetchWatchlist = async () => {
       try {
-        const response = await fetch('/api/watchlist');
+        const response = await fetch(getApiUrl('/api/watchlist'));
         if (!response.ok) throw new Error('Watchlist offline');
 
         const data = await response.json();
@@ -97,7 +98,7 @@ const Index = () => {
         if (tradingMode === 'swing') interval = "4h";
 
         // console.log("Fetching candles for:", activeSymbol);
-        const response = await fetch(`/api/candles?symbol=${activeSymbol}&interval=${interval}`);
+        const response = await fetch(getApiUrl(`/api/candles?symbol=${activeSymbol}&interval=${interval}`));
         if (!response.ok) throw new Error("API Offline");
 
         const data = await response.json();
@@ -130,7 +131,7 @@ const Index = () => {
 
     // 3. Update current_symbol in database so sentinel uses the correct asset
     try {
-      await fetch("/api/trade-settings", {
+      await fetch(getApiUrl("/api/trade-settings"), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -157,7 +158,7 @@ const Index = () => {
 
     // 2. Call Python Backend (Real AI)
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch(getApiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: content })
@@ -195,7 +196,7 @@ const Index = () => {
       // Optimistic UI Update
       toast({ title: "Sending Order...", description: `Executing ${action.toUpperCase()} on ${selectedAsset}...` });
 
-      const response = await fetch(`/api/trade?action=${action}`, {
+      const response = await fetch(getApiUrl(`/api/trade?action=${action}`), {
         method: 'POST'
       });
       const result = await response.json();
@@ -219,15 +220,15 @@ const Index = () => {
 
   const handleForceClose = async () => {
     try {
-    addLog('risk', 'EMERGENCY: Force liquidation triggered');
-    toast({ title: 'Force Liquidation', description: 'Closing all positions...', variant: 'destructive' });
-      
-      const response = await fetch("/api/force-close", {
+      addLog('risk', 'EMERGENCY: Force liquidation triggered');
+      toast({ title: 'Force Liquidation', description: 'Closing all positions...', variant: 'destructive' });
+
+      const response = await fetch(getApiUrl("/api/force-close"), {
         method: "POST"
       });
-      
+
       const result = await response.json();
-      
+
       if (result.status === "success") {
         addLog('trade', `Force close completed: ${result.closed} positions closed`);
         toast({
@@ -262,7 +263,7 @@ const Index = () => {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const response = await fetch("/api/logs?limit=20");
+        const response = await fetch(getApiUrl("/api/logs?limit=20"));
         if (response.ok) {
           const apiLogs = await response.json();
           if (Array.isArray(apiLogs) && apiLogs.length > 0) {
@@ -273,7 +274,7 @@ const Index = () => {
               type: log.type || 'system',
               message: log.message || 'No message'
             }));
-            
+
             // Merge with existing logs, avoiding duplicates
             setLogs(prev => {
               const existingIds = new Set(prev.map(l => l.id));
@@ -339,13 +340,13 @@ const Index = () => {
           <div className="grid grid-cols-12 gap-6">
             {/* Left Column - Chart (75% / 9 columns) */}
             <div className="col-span-12 lg:col-span-9 flex flex-col gap-4">
-        <ChartPanel
-          asset={currentAsset}
-          tradingMode={tradingMode}
-          data={chartData}
-        />
+              <ChartPanel
+                asset={currentAsset}
+                tradingMode={tradingMode}
+                data={chartData}
+              />
               <div className="bg-[#111] rounded-3xl border border-[#1f1f22] overflow-hidden">
-        <TerminalLog logs={logs} />
+                <TerminalLog logs={logs} />
               </div>
             </div>
 

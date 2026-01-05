@@ -4,6 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Asset } from "@/types/trading";
 import { cn } from "@/lib/utils";
+import { getApiUrl } from "@/lib/api";
 import {
   Shield,
   Zap,
@@ -65,14 +66,14 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
     const initialize = async () => {
       await fetchTradeSettings();
       await fetchAIStatus();
-      
+
       // Wait a bit for settings to load, then check auto-trading status
       setTimeout(async () => {
         // Re-fetch settings to ensure we have the latest
-        const response = await fetch("/api/trade-settings");
+        const response = await fetch(getApiUrl("/api/trade-settings"));
         const data = await response.json();
         const isAutoTrading = data.auto_trading || false;
-        
+
         if (!isAutoTrading) {
           // If auto-trading is OFF, just trigger analysis
           triggerAnalysis();
@@ -88,7 +89,7 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
 
   const fetchAIStatus = async () => {
     try {
-      const response = await fetch("/api/ai-status");
+      const response = await fetch(getApiUrl("/api/ai-status"));
       if (response.ok) {
         const status = await response.json();
         setAiStatus(status);
@@ -115,7 +116,7 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
 
   const fetchTradeSettings = async () => {
     try {
-      const response = await fetch("/api/trade-settings");
+      const response = await fetch(getApiUrl("/api/trade-settings"));
       const data = await response.json();
       setAutoTrading(data.auto_trading || false);
       setRiskTolerance(data.risk_tolerance || 20);
@@ -128,11 +129,11 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
     try {
       // Get consistent WEEX symbol format
       const symbol = getWeexSymbol(asset);
-      
+
       setIsLoading(true);
 
       // Try with request body first
-      let response = await fetch("/api/trigger-analysis", {
+      let response = await fetch(getApiUrl("/api/trigger-analysis"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol })
@@ -140,7 +141,7 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
 
       // If 422 error, try with query parameter
       if (!response.ok && response.status === 422) {
-        response = await fetch(`/api/trigger-analysis?symbol=${encodeURIComponent(symbol)}`, {
+        response = await fetch(getApiUrl(`/api/trigger-analysis?symbol=${encodeURIComponent(symbol)}`), {
           method: "POST",
           headers: { "Content-Type": "application/json" }
         });
@@ -180,7 +181,7 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
     try {
       // Get consistent WEEX symbol format
       const symbol = getWeexSymbol(asset);
-      const response = await fetch(`/api/ai-analysis?symbol=${symbol}`);
+      const response = await fetch(getApiUrl(`/api/ai-analysis?symbol=${symbol}`));
 
       if (!response.ok) {
         setIsLoading(false);
@@ -206,7 +207,7 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
       // Update current symbol when toggling
       const symbol = getWeexSymbol(asset);
 
-      await fetch("/api/trade-settings", {
+      await fetch(getApiUrl("/api/trade-settings"), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -224,7 +225,7 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
     setRiskTolerance(newValue);
 
     try {
-      await fetch("/api/trade-settings", {
+      await fetch(getApiUrl("/api/trade-settings"), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -241,7 +242,7 @@ export function SentinelControlTab({ asset, onAuthorizeTrade, onForceClose }: Se
       const symbol = getWeexSymbol(asset);
       const action = decision === "BUY" ? "long" : "short";
 
-      const response = await fetch("/api/trade", {
+      const response = await fetch(getApiUrl("/api/trade"), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
