@@ -7,8 +7,13 @@ import sys
 from datetime import datetime
 
 
-def main():
-    """Start the institutional trading system"""
+def main(skip_confirmation: bool = False):
+    """
+    Start the institutional trading system
+    
+    Args:
+        skip_confirmation: Skip interactive confirmation (for API/background mode)
+    """
     
     # Setup logging with UTF-8 encoding for Windows emoji support
     import io
@@ -62,15 +67,23 @@ def main():
         for symbol in orchestrator.ENABLED_SYMBOLS:
             logger.info(f"  • {symbol}")
         
-        # Confirm before starting
-        logger.warning("⚠️  WARNING: This will start LIVE TRADING with real money!")
-        logger.warning("⚠️  Make sure you understand the risks and have reviewed the documentation.")
-        
-        response = input("Type 'YES' to start trading, or anything else to exit: ")
-        
-        if response.strip().upper() != "YES":
-            logger.info("❌ Trading not started. Exiting safely.")
-            return 0
+        # Confirm before starting (only in CLI mode)
+        if not skip_confirmation:
+            logger.warning("⚠️  WARNING: This will start LIVE TRADING with real money!")
+            logger.warning("⚠️  Make sure you understand the risks and have reviewed the documentation.")
+            
+            try:
+                response = input("Type 'YES' to start trading, or anything else to exit: ")
+                
+                if response.strip().upper() != "YES":
+                    logger.info("❌ Trading not started. Exiting safely.")
+                    return 0
+            except (EOFError, OSError):
+                # Running in non-interactive mode (API/background), proceed automatically
+                logger.warning("⚠️  Running in non-interactive mode - starting automatically")
+                pass
+        else:
+            logger.warning("⚠️  WARNING: Starting LIVE TRADING in background mode")
         
         logger.info("🚀 Starting institutional trading system...")
         logger.info("   Press Ctrl+C to stop")

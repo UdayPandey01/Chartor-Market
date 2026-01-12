@@ -2264,7 +2264,7 @@ def start_institutional():
                 global institutional_running
                 institutional_running = True
                 try:
-                    institutional_main()
+                    institutional_main(skip_confirmation=True)  # Skip interactive prompt for API mode
                 except Exception as e:
                     logger.error(f"Institutional trading error: {e}", exc_info=True)
                 finally:
