@@ -83,10 +83,15 @@ def get_fallback_decision(market_data):
         confidence = 30
         reasoning = f"Market in {trend.lower()} consolidation. RSI: {rsi:.1f}. Waiting for clear setup."
     
+    # ============================================================
+    # CRITICAL: Return status to distinguish from Gemini decisions
+    # ============================================================
     return {
         "decision": decision,
         "confidence": int(confidence),
-        "reasoning": reasoning + " [Fallback Engine]"
+        "reasoning": reasoning + " [Fallback Engine]",
+        "status": "FALLBACK",
+        "source": "FALLBACK_ENGINE"
     }
 
 def get_trading_decision(market_data, symbol="cmt_btcusdt", use_cache=True, ml_prediction=None, sentiment=None):
@@ -195,6 +200,12 @@ def get_trading_decision(market_data, symbol="cmt_btcusdt", use_cache=True, ml_p
         
         quota_exceeded_until = None
         
+        # ============================================================
+        # CRITICAL: Add status to distinguish successful Gemini calls
+        # ============================================================
+        result['status'] = 'SUCCESS'
+        result['source'] = 'GEMINI'
+        
         return result
         
     except Exception as e:
@@ -206,6 +217,9 @@ def get_trading_decision(market_data, symbol="cmt_btcusdt", use_cache=True, ml_p
             print(f"Gemini quota exceeded. Using fallback engine for next {COOLDOWN_AFTER_QUOTA/60:.0f} minutes.")
         
         result = get_fallback_decision(market_data)
+        result['status'] = 'ERROR'  # Override fallback status to indicate error occurred
+        result['error_message'] = error_str[:200]
+        result['source'] = 'FALLBACK'  # Ensure source is set
         
         if use_cache:
             cache[symbol] = {
