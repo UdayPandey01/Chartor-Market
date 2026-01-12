@@ -1,4 +1,4 @@
-export type TradingMode = 'scalping' | 'intraday' | 'swing';
+export type TradingMode = 'scalping' | 'intraday' | 'swing' | 'institutional';
 
 export interface Asset {
   symbol: string;
@@ -29,6 +29,7 @@ export const TRADING_MODES: Record<TradingMode, { label: string; timeframes: str
   scalping: { label: 'Scalping', timeframes: '1m/5m', color: 'scalping' },
   intraday: { label: 'Intraday', timeframes: '15m/1h', color: 'intraday' },
   swing: { label: 'Swing', timeframes: '4h/1D', color: 'swing' },
+  institutional: { label: 'Institutional', timeframes: 'Multi-TF', color: 'institutional' },
 };
 
 export const MOCK_ASSETS: Asset[] = [

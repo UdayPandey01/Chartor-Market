@@ -14,10 +14,11 @@ export function TradingModeSelector({ activeMode, onModeChange }: TradingModeSel
     <div className="flex gap-1 p-1 bg-secondary/50 rounded-lg border border-border">
       {modes.map(([mode, config]) => {
         const isActive = activeMode === mode;
-        const variantMap: Record<TradingMode, "modeScalping" | "modeIntraday" | "modeSwing"> = {
+        const variantMap: Record<TradingMode, "modeScalping" | "modeIntraday" | "modeSwing" | "default"> = {
           scalping: "modeScalping",
           intraday: "modeIntraday",
           swing: "modeSwing",
+          institutional: "default",
         };
 
         return (
@@ -28,7 +29,8 @@ export function TradingModeSelector({ activeMode, onModeChange }: TradingModeSel
             onClick={() => onModeChange(mode)}
             className={cn(
               "flex-1 text-xs font-medium transition-all duration-200",
-              isActive && "shadow-lg"
+              isActive && "shadow-lg",
+              mode === "institutional" && isActive && "bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
             )}
           >
             <span className="flex flex-col items-center gap-0.5">

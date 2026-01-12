@@ -35,9 +35,14 @@ export function TopNavbar({ tradingMode, onModeChange, activeTab, onTabChange }:
 
           <div className="hidden md:flex items-center">
             <div className="flex gap-1 p-1 bg-[#1f1f22] rounded-lg border border-[#27272a]">
-              {(['scalping', 'intraday', 'swing'] as TradingMode[]).map((mode) => {
+              {(['scalping', 'intraday', 'swing', 'institutional'] as TradingMode[]).map((mode) => {
                 const isActive = tradingMode === mode;
-                const labels = { scalping: '1m', intraday: '15m', swing: '4h' };
+                const labels = {
+                  scalping: '1m',
+                  intraday: '15m',
+                  swing: '4h',
+                  institutional: 'Quant'
+                } as Record<TradingMode, string>;
                 return (
                   <button
                     key={mode}
@@ -45,7 +50,9 @@ export function TopNavbar({ tradingMode, onModeChange, activeTab, onTabChange }:
                     className={cn(
                       "px-3 py-1 rounded text-xs font-medium transition-colors",
                       isActive
-                        ? "bg-primary text-white"
+                        ? mode === 'institutional'
+                          ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                          : "bg-primary text-white"
                         : "text-[#888] hover:text-white hover:bg-[#27272a]"
                     )}
                   >

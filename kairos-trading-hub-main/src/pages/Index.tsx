@@ -9,6 +9,7 @@ import { StrategiesTab } from "@/components/dashboard/StrategiesTab";
 import { TradesHistoryTab } from "@/components/dashboard/TradesHistoryTab";
 import { PositionsTab } from "@/components/dashboard/PositionsTab";
 import { RiskMetricsTab } from "@/components/dashboard/RiskMetricsTab";
+import { InstitutionalTab } from "@/components/dashboard/InstitutionalTab";
 import { Asset, TradingMode, LogEntry, ChatMessage } from "@/types/trading";
 import { toast } from "@/hooks/use-toast";
 import { getApiUrl } from "@/lib/api";
@@ -91,6 +92,11 @@ const Index = () => {
   // 2. Real-Time Chart Data Fetching
   useEffect(() => {
     const fetchCandles = async () => {
+      // Skip chart fetch for institutional mode - it shows metrics instead
+      if (tradingMode === 'institutional') {
+        return;
+      }
+
       try {
         // Map Trading Mode to Interval
         let interval = "15m";
@@ -117,6 +123,13 @@ const Index = () => {
   // 3. Handlers
   const handleModeChange = (mode: TradingMode) => {
     setTradingMode(mode);
+
+    // Auto-switch to sentinel tab when institutional mode is selected
+    if (mode === 'institutional' && activeTab !== 'sentinel') {
+      setActiveTab('sentinel');
+    }
+
+    addLog('system', `Trading mode switched to ${mode.toUpperCase()}`);
     addLog('system', `Trading mode switched to ${mode.toUpperCase()}`);
   };
 
@@ -296,6 +309,11 @@ const Index = () => {
 
   // Render active tab content
   const renderTabContent = () => {
+    // Special case: If institutional mode, always show institutional tab
+    if (tradingMode === 'institutional') {
+      return <InstitutionalTab />;
+    }
+
     switch (activeTab) {
       case "sentinel":
         return (
@@ -338,13 +356,65 @@ const Index = () => {
       <div className="pt-16 pb-6">
         <div className="max-w-[1600px] mx-auto px-6 py-6">
           <div className="grid grid-cols-12 gap-6">
-            {/* Left Column - Chart (75% / 9 columns) */}
+            {/* Left Column - Chart or Institutional Dashboard (75% / 9 columns) */}
             <div className="col-span-12 lg:col-span-9 flex flex-col gap-4">
-              <ChartPanel
-                asset={currentAsset}
-                tradingMode={tradingMode}
-                data={chartData}
-              />
+              {tradingMode === 'institutional' ? (
+                // Institutional Mode: Show multi-asset overview instead of single chart
+                <div className="bg-[#111] rounded-3xl border border-[#1f1f22] p-6">
+                  <div className="mb-4 pb-4 border-b border-border/50">
+                    <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      Multi-Asset Performance Dashboard
+                    </h2>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Real-time monitoring of 8-asset quant system
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-4">
+                    {assets.slice(0, 8).map((asset) => (
+                      <div
+                        key={asset.symbol}
+                        className="p-4 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-all cursor-pointer"
+                        onClick={() => handleAssetSelect(asset.symbol)}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-bold text-foreground">{asset.symbol}</span>
+                          <span className={`text-xs font-medium ${asset.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {asset.change24h >= 0 ? '↑' : '↓'} {Math.abs(asset.change24h).toFixed(2)}%
+                          </span>
+                        </div>
+                        <div className="text-lg font-bold text-foreground mb-1">
+                          ${asset.price.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Vol: ${(asset.volume24h / 1000000).toFixed(0)}M
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 p-4 rounded-lg bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20">
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-semibold text-foreground">System Status:</span> The institutional quant system scans all assets every 30 seconds,
+                      ranks them by momentum + regime fit, and automatically rotates capital to the highest probability opportunity.
+                      Enable the system in the control panel on the right →
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                // Standard Mode: Show single asset chart
+                <ChartPanel
+                  asset={currentAsset}
+                  tradingMode={tradingMode}
+                  data={chartData}
+                />
+              )}
+
               <div className="bg-[#111] rounded-3xl border border-[#1f1f22] overflow-hidden">
                 <TerminalLog logs={logs} />
               </div>
