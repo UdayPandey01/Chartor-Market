@@ -13,6 +13,19 @@ from dotenv import load_dotenv
 from core.weex_api import WeexClient
 from core.db_manager import get_db_connection
 
+# NEW: Production-ready components
+from core.position_manager import initialize_position_manager, get_position_manager
+from core.sentiment_live import get_sentiment_feed, get_real_time_sentiment
+from core.safety_layer import ExecutionSafetyLayer
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # 1. Load Environment Variables
 load_dotenv()
 
@@ -66,9 +79,27 @@ env_valid = validate_env()
 app = FastAPI(title="Chartor Trading Engine API")
 client = WeexClient()
 
+# NEW: Initialize production components at module level
+try:
+    position_manager = initialize_position_manager(client, logger)
+    safety_layer = ExecutionSafetyLayer(client, initial_equity=10000.0, logger=logger)
+    sentiment_feed = get_sentiment_feed()
+    logger.info("✅ Production components initialized successfully")
+except Exception as init_error:
+    logger.warning(f"⚠️ Failed to initialize production components at module level: {init_error}")
+    # Set to None - will be initialized in startup_event
+    position_manager = None
+    safety_layer = None
+    sentiment_feed = None
+
+trading_mode_lock = threading.Lock()  # Prevents Sentinel + Institutional conflict
+
 # Background task control
 sentinel_running = False
 sentinel_thread = None
+
+# Track which mode is active
+active_trading_mode = None  # "SENTINEL" or "INSTITUTIONAL" or None
 
 def sentinel_loop():
     """Background sentinel service that monitors markets and executes trades when auto-trading is enabled."""
@@ -144,11 +175,29 @@ def sentinel_loop():
                 if ml_prediction:
                     print(f"   Local ML: Predicts {ml_direction} ({ml_confidence}% confidence)")
                 
-                # STEP 4: Get Market Sentiment (Local FinBERT)
+                # STEP 4: Get Market Sentiment (REAL-TIME from CryptoPanic or FinBERT)
                 symbol_clean = symbol.replace("cmt_", "").replace("usdt", "").upper()
-                sent_label, sent_score = analyze_market_sentiment(symbol_clean)
-                sentiment = {"label": sent_label, "score": sent_score}
-                print(f"   FinBERT Sentiment: {sent_label} (score: {sent_score})")
+                
+                # Use real-time sentiment feed
+                global sentiment_feed
+                if sentiment_feed:
+                    sentiment_result = sentiment_feed.get_market_sentiment(symbol_clean)
+                    sent_label = sentiment_result["label"]
+                    sent_score = sentiment_result["score"]
+                    sentiment = {
+                        "label": sent_label,
+                        "score": sent_score,
+                        "source": sentiment_result["source"],
+                        "headline": sentiment_result.get("latest_headline", "")
+                    }
+                    print(f"   Sentiment ({sentiment_result['source']}): {sent_label} (score: {sent_score:.2f})")
+                    print(f"   Headline: {sentiment_result.get('latest_headline', 'N/A')[:60]}...")
+                else:
+                    # Fallback to legacy sentiment
+                    from core.sentiment import analyze_market_sentiment
+                    sent_label, sent_score = analyze_market_sentiment(symbol_clean)
+                    sentiment = {"label": sent_label, "score": sent_score}
+                    print(f"   FinBERT Sentiment: {sent_label} (score: {sent_score})")
                 
                 # STEP 5: Evaluate Active Strategies
                 from core.strategy_evaluator import evaluate_strategies
@@ -172,11 +221,25 @@ def sentinel_loop():
                         ml_prediction=ml_prediction,
                         sentiment=sentiment
                     )
+                    
+                    # ============================================================
+                    # CRITICAL: Check Gemini status - abort on persistent errors
+                    # ============================================================
+                    ai_status = ai_result.get("status", "UNKNOWN")
+                    ai_source = ai_result.get("source", "UNKNOWN")
+                    
+                    if ai_status == "ERROR":
+                        logger.error(f"Gemini API error - skipping cycle")
+                        print(f"   Gemini API error - using fallback decision")
+                    elif ai_status == "FALLBACK":
+                        logger.warning(f"Using fallback decision engine (Gemini unavailable)")
+                        print(f"   Using Fallback Engine (Gemini unavailable)")
+                    
                     decision = ai_result.get("decision", "WAIT")
                     confidence = ai_result.get("confidence", 0)
                     reason = ai_result.get("reasoning", "No reason provided")
                     
-                    print(f"   Gemini Final Decision: {decision} ({confidence}% confidence)")
+                    print(f"   {ai_source} Final Decision: {decision} ({confidence}% confidence)")
                     
                     # Save analysis
                     save_ai_analysis(symbol, decision, confidence, reason, market_state)
@@ -301,9 +364,84 @@ def sentinel_loop():
                                         continue
                                     
                                 except Exception as balance_err:
+                                    logger.error(f"Balance check error: {balance_err}", exc_info=True)
                                     print(f"   Balance check error: {balance_err}. Using default size.")
                                     size = "0.01"  
                                 
+                                # ============================================================
+                                # CRITICAL SAFETY INTEGRATION (Production Upgrade)
+                                # ============================================================
+                                
+                                # STEP 1: Calculate ATR-based Stop Loss & Take Profit
+                                atr = market_state.get('volatility') or market_state.get('atr', current_price * 0.015)
+                                if decision == "BUY":
+                                    stop_loss = current_price - (atr * 1.5)  # 1.5R risk
+                                    take_profit = current_price + (atr * 2.0)  # 2.0R reward (1.33:1 R:R)
+                                    direction = "LONG"
+                                else:  # SELL
+                                    stop_loss = current_price + (atr * 1.5)
+                                    take_profit = current_price - (atr * 2.0)
+                                    direction = "SHORT"
+                                
+                                logger.info(f"   SL/TP calculated: Entry ${current_price:.2f}, SL ${stop_loss:.2f}, TP ${take_profit:.2f}, ATR ${atr:.4f}")
+                                
+                                # STEP 2: Check for duplicate positions (prevent stacking)
+                                if position_manager:
+                                    existing_pos = position_manager.get_position(symbol)
+                                    if existing_pos:
+                                        logger.warning(f"   ⚠️ Position already open for {symbol} - skipping to prevent duplicate")
+                                        print(f"   Position already open for {symbol} - skipping trade")
+                                        time.sleep(30)
+                                        continue
+                                
+                                # STEP 3: Validate trade through Safety Layer
+                                if safety_layer:
+                                    try:
+                                        # Calculate margin required
+                                        leverage = 20  # Default leverage
+                                        position_value = float(size) * current_price
+                                        margin_required = position_value / leverage
+                                        
+                                        # Get current positions for safety checks
+                                        current_positions = []
+                                        if position_manager:
+                                            current_positions = [
+                                                {
+                                                    "symbol": p.symbol,
+                                                    "margin_used": p.margin_used,
+                                                    "direction": p.direction
+                                                }
+                                                for p in position_manager.get_all_positions()
+                                            ]
+                                        
+                                        # Run all 10 safety checks
+                                        can_execute, safety_results = safety_layer.validate_trade(
+                                            symbol=symbol,
+                                            direction=direction,
+                                            size=float(size),
+                                            entry_price=current_price,
+                                            stop_loss=stop_loss,
+                                            take_profit=take_profit,
+                                            leverage=leverage,
+                                            margin_required=margin_required,
+                                            current_positions=current_positions
+                                        )
+                                        
+                                        if not can_execute:
+                                            logger.warning(f"   🚫 Trade REJECTED by Safety Layer")
+                                            failed_checks = [r.check_name for r in safety_results if not r.passed and r.severity == "CRITICAL"]
+                                            print(f"   Safety checks failed: {', '.join(failed_checks)}")
+                                            time.sleep(30)
+                                            continue
+                                        else:
+                                            logger.info(f"   ✅ Trade APPROVED by Safety Layer")
+                                    except Exception as safety_err:
+                                        logger.error(f"Safety layer validation failed: {safety_err}", exc_info=True)
+                                        print(f"   Safety validation error - aborting trade for safety")
+                                        time.sleep(30)
+                                        continue
+                                
+                                # STEP 4: Execute order on WEEX
                                 print(f"   AUTO-EXECUTING {decision} ORDER...")
                                 side = "buy" if decision == "BUY" else "sell"
                                 order_res = client.place_order(side=side, size=size, symbol=symbol)
@@ -393,8 +531,8 @@ def sentinel_loop():
                                         profitable_trades = [t for t in all_trades if t.get('pnl') and float(t.get('pnl', 0)) > 0]
                                         profitable_count = len(profitable_trades)
                                         print(f"   Profitable Trades: {profitable_count}/15 required")
-                                    except:
-                                        pass
+                                    except Exception as profitable_err:
+                                        logger.error(f"Failed to count profitable trades: {profitable_err}", exc_info=True)
                                     
                                     update_or_create_position({
                                         "symbol": symbol,
@@ -403,9 +541,43 @@ def sentinel_loop():
                                         "entry_price": current_price,
                                         "current_price": current_price,
                                         "unrealized_pnl": 0,
-                                        "leverage": 1,
+                                        "leverage": leverage,
                                         "order_id": order_id
                                     })
+                                    
+                                    # ============================================================
+                                    # CRITICAL: Register position with Position Manager
+                                    # ============================================================
+                                    if position_manager:
+                                        try:
+                                            success = position_manager.open_position(
+                                                symbol=symbol,
+                                                side=side,
+                                                direction=direction,
+                                                size=float(size),
+                                                entry_price=current_price,
+                                                stop_loss=stop_loss,
+                                                take_profit=take_profit,
+                                                leverage=leverage,
+                                                margin_used=margin_required,
+                                                atr=atr,
+                                                order_id=order_id,
+                                                source="SENTINEL",
+                                                metadata={
+                                                    "ml_prediction": ml_prediction,
+                                                    "sentiment": sentiment,
+                                                    "confidence": confidence,
+                                                    "strategy": strategy_name
+                                                }
+                                            )
+                                            if success:
+                                                logger.info(f"   ✅ Position registered with Position Manager - automatic SL/TP monitoring active")
+                                            else:
+                                                logger.error(f"   ❌ Failed to register position with Position Manager")
+                                        except Exception as pm_err:
+                                            logger.error(f"Position Manager registration failed: {pm_err}", exc_info=True)
+                                    else:
+                                        logger.warning(f"   ⚠️ Position Manager not available - no automatic SL/TP monitoring")
                                 else:
                                     print(f"   Trade Failed: {order_res.get('msg', 'Unknown error')}")
                                     log_message = f"AUTO-TRADE FAILED: {decision} on {symbol} | Error: {order_res.get('msg', 'Unknown')}"
@@ -446,19 +618,41 @@ def sentinel_loop():
 
 def start_sentinel():
     """Start the background sentinel service."""
-    global sentinel_running, sentinel_thread
+    global sentinel_running, sentinel_thread, active_trading_mode, position_manager
     
-    if not sentinel_running:
-        sentinel_running = True
-        sentinel_thread = threading.Thread(target=sentinel_loop, daemon=True)
-        sentinel_thread.start()
-        print("Sentinel service started")
+    with trading_mode_lock:
+        # Check for conflicts
+        if active_trading_mode == "INSTITUTIONAL":
+            logger.error("❌ Cannot start Sentinel: Institutional trading is active")
+            raise Exception("Trading conflict: Institutional system is already running. Stop it first.")
+        
+        if not sentinel_running:
+            sentinel_running = True
+            active_trading_mode = "SENTINEL"
+            
+            # ============================================================
+            # CRITICAL: Start Position Manager monitoring
+            # ============================================================
+            if position_manager and not position_manager.monitor_running:
+                try:
+                    position_manager.start_monitoring()
+                    logger.info("✅ Position Manager monitoring started - automatic SL/TP active")
+                except Exception as pm_err:
+                    logger.error(f"Failed to start Position Manager monitoring: {pm_err}", exc_info=True)
+            
+            sentinel_thread = threading.Thread(target=sentinel_loop, daemon=True)
+            sentinel_thread.start()
+            logger.info("✅ Sentinel service started")
 
 def stop_sentinel():
     """Stop the background sentinel service."""
-    global sentinel_running
-    sentinel_running = False
-    print("Sentinel service stopped")
+    global sentinel_running, active_trading_mode
+    
+    with trading_mode_lock:
+        sentinel_running = False
+        if active_trading_mode == "SENTINEL":
+            active_trading_mode = None
+        logger.info("🛑 Sentinel service stopped")
 
 # 3. CORS Configuration (CRITICAL for React Connection)
 # This allows your frontend (localhost:8080 or 5173) to talk to this backend
@@ -1643,13 +1837,38 @@ def get_risk_metrics():
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database and sentinel service on startup."""
+    """Initialize database and production-ready trading systems on startup."""
+    global position_manager, safety_layer, sentiment_feed
+    
     from core.db_manager import init_db
     
     try:
+        logger.info("="*60)
+        logger.info("CHARTOR TRADING ENGINE - STARTUP")
+        logger.info("="*60)
+        
         # Initialize database tables
-        print("Initializing database...")
+        logger.info("Initializing database...")
         init_db()
+        
+        # Initialize production components (if not already initialized)
+        if position_manager is None:
+            logger.info("Initializing Position Manager...")
+            position_manager = initialize_position_manager(client, logger)
+        else:
+            logger.info("Position Manager already initialized")
+        
+        if safety_layer is None:
+            logger.info("Initializing Safety Layer...")
+            safety_layer = ExecutionSafetyLayer(client, initial_equity=10000.0, logger=logger)
+        else:
+            logger.info("Safety Layer already initialized")
+        
+        if sentiment_feed is None:
+            logger.info("Initializing Sentiment Feed...")
+            sentiment_feed = get_sentiment_feed()
+        else:
+            logger.info("Sentiment Feed already initialized")
         
         # Check if auto-trading is enabled
         conn = get_db_connection()
@@ -1661,19 +1880,42 @@ async def startup_event():
             conn.close()
             
             if settings and settings.get("auto_trading"):
-                print("Auto-trading enabled, starting sentinel service...")
+                logger.info("Auto-trading enabled, starting Sentinel service...")
                 start_sentinel()
             else:
-                print("Auto-trading disabled")
+                logger.info("Auto-trading disabled")
+        
+        logger.info("="*60)
+        logger.info("STARTUP COMPLETE ✅")
+        logger.info("="*60)
     except Exception as e:
-        print(f"Startup error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Startup error: {e}", exc_info=True)
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop sentinel service on shutdown."""
+    """Stop all trading systems and close positions on shutdown."""
+    global position_manager
+    
+    logger.info("="*60)
+    logger.info("SHUTDOWN INITIATED")
+    logger.info("="*60)
+    
+    # Stop sentinel
     stop_sentinel()
+    
+    # Stop institutional trading
+    global orchestrator_instance
+    if orchestrator_instance:
+        logger.info("Stopping institutional trading...")
+        orchestrator_instance = None
+    
+    # Shutdown position manager (closes all positions)
+    if position_manager:
+        position_manager.shutdown()
+    
+    logger.info("="*60)
+    logger.info("SHUTDOWN COMPLETE ✅")
+    logger.info("="*60)
 
 # --- Strategy Marketplace Endpoints ---
 @app.get("/api/strategies")
