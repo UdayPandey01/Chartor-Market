@@ -146,13 +146,13 @@ def sentinel_loop():
             from datetime import datetime
             if quota_exceeded_until and datetime.now() < quota_exceeded_until:
                 # Quota exceeded, wait longer between checks
-                print(f"Sentinel paused: Gemini quota exceeded. Resuming in {int((quota_exceeded_until - datetime.now()).total_seconds()/60)} minutes")
+                logger.warning(f"Sentinel paused: Gemini quota exceeded. Resuming in {int((quota_exceeded_until - datetime.now()).total_seconds()/60)} minutes")
                 time.sleep(300)  # Check every 5 minutes instead of 30 seconds
                 continue
             
-            print(f"\n{'='*60}")
-            print(f"Sentinel: {symbol} | Auto-Trade: ON | Risk: {risk_tolerance}%")
-            print(f"{'='*60}")
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Sentinel: {symbol} | Auto-Trade: ON | Risk: {risk_tolerance}%")
+            logger.info(f"{'='*60}")
             
             # Fetch market data (get more for ML training)
             candles = client.fetch_candles(symbol=symbol, limit=500)
@@ -167,13 +167,13 @@ def sentinel_loop():
                     time.sleep(30)
                     continue
                 
-                print(f"   Technical: Price ${market_state.get('price', 0):.2f} | RSI {market_state.get('rsi', 50):.1f} | Trend {market_state.get('trend', 'Neutral')}")
+                logger.info(f"   Technical: Price ${market_state.get('price', 0):.2f} | RSI {market_state.get('rsi', 50):.1f} | Trend {market_state.get('trend', 'Neutral')}")
                 
                 # STEP 3: Get Local ML Prediction
                 ml_direction, ml_confidence = ml_analyst.predict_next_move(market_state)
                 ml_prediction = {"direction": ml_direction, "confidence": ml_confidence} if ml_trained else None
                 if ml_prediction:
-                    print(f"   Local ML: Predicts {ml_direction} ({ml_confidence}% confidence)")
+                    logger.info(f"   Local ML: Predicts {ml_direction} ({ml_confidence}% confidence)")
                 
                 # STEP 4: Get Market Sentiment (REAL-TIME from CryptoPanic or FinBERT)
                 symbol_clean = symbol.replace("cmt_", "").replace("usdt", "").upper()
@@ -190,14 +190,14 @@ def sentinel_loop():
                         "source": sentiment_result["source"],
                         "headline": sentiment_result.get("latest_headline", "")
                     }
-                    print(f"   Sentiment ({sentiment_result['source']}): {sent_label} (score: {sent_score:.2f})")
-                    print(f"   Headline: {sentiment_result.get('latest_headline', 'N/A')[:60]}...")
+                    logger.info(f"   Sentiment ({sentiment_result['source']}): {sent_label} (score: {sent_score:.2f})")
+                    logger.info(f"   Headline: {sentiment_result.get('latest_headline', 'N/A')[:60]}...")
                 else:
                     # Fallback to legacy sentiment
                     from core.sentiment import analyze_market_sentiment
                     sent_label, sent_score = analyze_market_sentiment(symbol_clean)
                     sentiment = {"label": sent_label, "score": sent_score}
-                    print(f"   FinBERT Sentiment: {sent_label} (score: {sent_score})")
+                    logger.info(f"   FinBERT Sentiment: {sent_label} (score: {sent_score})")
                 
                 # STEP 5: Evaluate Active Strategies
                 from core.strategy_evaluator import evaluate_strategies
@@ -209,11 +209,11 @@ def sentinel_loop():
                     # Use the first triggered strategy (can be enhanced to handle multiple)
                     strategy_decision = triggered_strategies[0].get('action')
                     strategy_name = triggered_strategies[0].get('name')
-                    print(f"   Strategy Triggered: {strategy_name} -> {strategy_decision}")
+                    logger.info(f"   Strategy Triggered: {strategy_name} -> {strategy_decision}")
                 
                 # STEP 6: Hybrid Decision - Send summary to Gemini (if no strategy triggered)
                 if not strategy_decision or strategy_decision == "WAIT":
-                    print("   Consulting Gemini for final approval...")
+                    logger.info("   Consulting Gemini for final approval...")
                     ai_result = get_trading_decision(
                         market_state, 
                         symbol=symbol,
@@ -230,16 +230,16 @@ def sentinel_loop():
                     
                     if ai_status == "ERROR":
                         logger.error(f"Gemini API error - skipping cycle")
-                        print(f"   Gemini API error - using fallback decision")
+                        logger.error(f"   Gemini API error - using fallback decision")
                     elif ai_status == "FALLBACK":
                         logger.warning(f"Using fallback decision engine (Gemini unavailable)")
-                        print(f"   Using Fallback Engine (Gemini unavailable)")
+                        logger.warning(f"   Using Fallback Engine (Gemini unavailable)")
                     
                     decision = ai_result.get("decision", "WAIT")
                     confidence = ai_result.get("confidence", 0)
                     reason = ai_result.get("reasoning", "No reason provided")
                     
-                    print(f"   {ai_source} Final Decision: {decision} ({confidence}% confidence)")
+                    logger.info(f"   {ai_source} Final Decision: {decision} ({confidence}% confidence)")
                     
                     # Save analysis
                     save_ai_analysis(symbol, decision, confidence, reason, market_state)
@@ -262,10 +262,10 @@ def sentinel_loop():
                         # Risk check
                         is_safe = True
                         if decision == "BUY" and market_state.get('rsi', 50) > 70:
-                            print("   RISK BLOCK: RSI too high for Buy")
+                            logger.warning("   RISK BLOCK: RSI too high for Buy")
                             is_safe = False
                         if decision == "SELL" and market_state.get('rsi', 50) < 30:
-                            print("   RISK BLOCK: RSI too low for Sell")
+                            logger.warning("   RISK BLOCK: RSI too low for Sell")
                             is_safe = False
                         
                         if is_safe:
@@ -273,14 +273,14 @@ def sentinel_loop():
                             ml_agrees = False
                             
                             if strategy_name:
-                                print(f"   STRATEGY TRADE: Executing based on user-defined strategy '{strategy_name}'")
+                                logger.info(f"   STRATEGY TRADE: Executing based on user-defined strategy '{strategy_name}'")
                             else:
                                 if ml_prediction:
                                     ml_dir = ml_prediction.get('direction', 'UNKNOWN')
                                     ml_agrees = (decision == "BUY" and ml_dir == "UP") or (decision == "SELL" and ml_dir == "DOWN")
                                 
                                 if ml_prediction and not ml_agrees:
-                                    print(f"   CONFLICT: Gemini says {decision}, but ML predicts {ml_prediction.get('direction')}. Being conservative - waiting.")
+                                    logger.warning(f"   CONFLICT: Gemini says {decision}, but ML predicts {ml_prediction.get('direction')}. Being conservative - waiting.")
                                     log_message = f"Confluence check failed: Gemini {decision} vs ML {ml_prediction.get('direction')}. Waiting for alignment."
                                     should_execute = False
                                     
@@ -304,10 +304,10 @@ def sentinel_loop():
                                             cur.close()
                                             conn.close()
                                     except Exception as log_err:
-                                        print(f"Log error: {log_err}")
+                                        logger.error(f"Log error: {log_err}")
                                 else:
                                     if ml_agrees:
-                                        print(f"   CONFLUENCE DETECTED! ML and Gemini agree on {decision}")
+                                        logger.info(f"   CONFLUENCE DETECTED! ML and Gemini agree on {decision}")
                             
                             if should_execute:
                                 try:
@@ -334,10 +334,10 @@ def sentinel_loop():
                                     else:
                                         size = "0.001"  
                                     
-                                    print(f"   Balance: {available_usdt:.2f} USDT | Position Size: {size} contracts (~{position_size_usdt:.2f} USDT)")
+                                    logger.info(f"   Balance: {available_usdt:.2f} USDT | Position Size: {size} contracts (~{position_size_usdt:.2f} USDT)")
                                     
                                     if available_usdt < 1:
-                                        print(f"   INSUFFICIENT BALANCE: Only {available_usdt:.2f} USDT available. Skipping trade.")
+                                        logger.error(f"   INSUFFICIENT BALANCE: Only {available_usdt:.2f} USDT available. Skipping trade.")
                                         log_message = f"INSUFFICIENT BALANCE: {available_usdt:.2f} USDT available. Need at least 1 USDT."
                                         try:
                                             conn = get_db_connection()
@@ -365,7 +365,7 @@ def sentinel_loop():
                                     
                                 except Exception as balance_err:
                                     logger.error(f"Balance check error: {balance_err}", exc_info=True)
-                                    print(f"   Balance check error: {balance_err}. Using default size.")
+                                    logger.error(f"   Balance check error: {balance_err}. Using default size.")
                                     size = "0.01"  
                                 
                                 # ============================================================
@@ -390,7 +390,7 @@ def sentinel_loop():
                                     existing_pos = position_manager.get_position(symbol)
                                     if existing_pos:
                                         logger.warning(f"   ⚠️ Position already open for {symbol} - skipping to prevent duplicate")
-                                        print(f"   Position already open for {symbol} - skipping trade")
+                                        logger.warning(f"   Position already open for {symbol} - skipping trade")
                                         time.sleep(30)
                                         continue
                                 
@@ -430,24 +430,24 @@ def sentinel_loop():
                                         if not can_execute:
                                             logger.warning(f"   🚫 Trade REJECTED by Safety Layer")
                                             failed_checks = [r.check_name for r in safety_results if not r.passed and r.severity == "CRITICAL"]
-                                            print(f"   Safety checks failed: {', '.join(failed_checks)}")
+                                            logger.error(f"   Safety checks failed: {', '.join(failed_checks)}")
                                             time.sleep(30)
                                             continue
                                         else:
                                             logger.info(f"   ✅ Trade APPROVED by Safety Layer")
                                     except Exception as safety_err:
                                         logger.error(f"Safety layer validation failed: {safety_err}", exc_info=True)
-                                        print(f"   Safety validation error - aborting trade for safety")
+                                        logger.error(f"   Safety validation error - aborting trade for safety")
                                         time.sleep(30)
                                         continue
                                 
                                 # STEP 4: Execute order on WEEX
-                                print(f"   AUTO-EXECUTING {decision} ORDER...")
+                                logger.info(f"   AUTO-EXECUTING {decision} ORDER...")
                                 side = "buy" if decision == "BUY" else "sell"
                                 order_res = client.place_order(side=side, size=size, symbol=symbol)
                                 
                                 if order_res and (order_res.get("code") == "00000" or order_res.get("order_id")):
-                                    print(f"   Trade Executed Successfully!")
+                                    logger.info(f"   Trade Executed Successfully!")
                                     # Extract order_id from response (can be in data.orderId or directly as order_id)
                                     if isinstance(order_res.get("data"), dict) and order_res.get("data", {}).get("orderId"):
                                         order_id = str(order_res.get("data", {}).get("orderId"))
@@ -492,9 +492,9 @@ def sentinel_loop():
                                             output_data=ai_log_output,
                                             explanation=explanation
                                         )
-                                        print(f"   AI Log uploaded for order {order_id}")
+                                        logger.info(f"   AI Log uploaded for order {order_id}")
                                     except Exception as ai_log_err:
-                                        print(f"   AI Log upload failed: {ai_log_err}")
+                                        logger.error(f"   AI Log upload failed: {ai_log_err}")
                                         import traceback
                                         traceback.print_exc()
                                     current_price = float(market_state.get('price', 0))
@@ -530,7 +530,7 @@ def sentinel_loop():
                                         all_trades = get_trade_history(limit=1000)
                                         profitable_trades = [t for t in all_trades if t.get('pnl') and float(t.get('pnl', 0)) > 0]
                                         profitable_count = len(profitable_trades)
-                                        print(f"   Profitable Trades: {profitable_count}/15 required")
+                                        logger.info(f"   Profitable Trades: {profitable_count}/15 required")
                                     except Exception as profitable_err:
                                         logger.error(f"Failed to count profitable trades: {profitable_err}", exc_info=True)
                                     
@@ -579,7 +579,7 @@ def sentinel_loop():
                                     else:
                                         logger.warning(f"   ⚠️ Position Manager not available - no automatic SL/TP monitoring")
                                 else:
-                                    print(f"   Trade Failed: {order_res.get('msg', 'Unknown error')}")
+                                    logger.error(f"   Trade Failed: {order_res.get('msg', 'Unknown error')}")
                                     log_message = f"AUTO-TRADE FAILED: {decision} on {symbol} | Error: {order_res.get('msg', 'Unknown')}"
                                 
                                 # Log the trade attempt
@@ -603,16 +603,14 @@ def sentinel_loop():
                                         cur.close()
                                         conn.close()
                                 except Exception as log_err:
-                                    print(f"Log error: {log_err}")
+                                    logger.error(f"Log error: {log_err}")
                     else:
                         if confidence < confidence_threshold:
-                            print(f"   Confidence {confidence}% below threshold {confidence_threshold}%")
+                            logger.info(f"   Confidence {confidence}% below threshold {confidence_threshold}%")
                         else:
-                            print("   Market Indecisive - No Action")
+                            logger.info("   Market Indecisive - No Action")
         except Exception as e:
-            print(f"Sentinel Loop Error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Sentinel Loop Error: {e}", exc_info=True)
         
         time.sleep(30)  # Wait 30 seconds before next scan
 

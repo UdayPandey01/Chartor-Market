@@ -24,10 +24,9 @@ def main():
     
     logger = logging.getLogger("InstitutionalTrading")
     
-    print("="*60)
-    print("INSTITUTIONAL TRADING SYSTEM")
-    print("="*60)
-    print()
+    logger.info("="*60)
+    logger.info("INSTITUTIONAL TRADING SYSTEM")
+    logger.info("="*60)
     
     try:
         # Import required components
@@ -42,14 +41,13 @@ def main():
         # Configuration
         INITIAL_EQUITY = 10000.0  # Starting capital
         
-        print(f"Configuration:")
-        print(f"  Initial Equity: ${INITIAL_EQUITY:,.2f}")
-        print(f"  Leverage: 20x")
-        print(f"  Risk per trade: 1.25%")
-        print(f"  Max daily loss: 3%")
-        print(f"  Max drawdown: 12%")
-        print(f"  Cycle interval: 30 seconds")
-        print()
+        logger.info(f"Configuration:")
+        logger.info(f"  Initial Equity: ${INITIAL_EQUITY:,.2f}")
+        logger.info(f"  Leverage: 20x")
+        logger.info(f"  Risk per trade: 1.25%")
+        logger.info(f"  Max daily loss: 3%")
+        logger.info(f"  Max drawdown: 12%")
+        logger.info(f"  Cycle interval: 30 seconds")
         
         # Create orchestrator
         logger.info("Creating trading orchestrator...")
@@ -59,28 +57,23 @@ def main():
             logger=logger
         )
         
-        print("✅ System initialized successfully!")
-        print()
-        print("Enabled symbols:")
+        logger.info("✅ System initialized successfully!")
+        logger.info("Enabled symbols:")
         for symbol in orchestrator.ENABLED_SYMBOLS:
-            print(f"  • {symbol}")
-        print()
+            logger.info(f"  • {symbol}")
         
         # Confirm before starting
-        print("⚠️  WARNING: This will start LIVE TRADING with real money!")
-        print("⚠️  Make sure you understand the risks and have reviewed the documentation.")
-        print()
+        logger.warning("⚠️  WARNING: This will start LIVE TRADING with real money!")
+        logger.warning("⚠️  Make sure you understand the risks and have reviewed the documentation.")
         
         response = input("Type 'YES' to start trading, or anything else to exit: ")
         
         if response.strip().upper() != "YES":
-            print("❌ Trading not started. Exiting safely.")
+            logger.info("❌ Trading not started. Exiting safely.")
             return 0
         
-        print()
-        print("🚀 Starting institutional trading system...")
-        print("   Press Ctrl+C to stop")
-        print()
+        logger.info("🚀 Starting institutional trading system...")
+        logger.info("   Press Ctrl+C to stop")
         
         # Start continuous trading
         orchestrator.run_continuous()
@@ -90,13 +83,13 @@ def main():
         logger.info("Shutting down gracefully...")
         
         # Orchestrator handles position closure in run_continuous
-        print("✅ Shutdown complete")
+        logger.info("✅ Shutdown complete")
         return 0
         
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
-        print(f"\n❌ Error: {e}")
-        print("   Check the log file for details")
+        logger.error(f"\n❌ Error: {e}")
+        logger.error("   Check the log file for details")
         return 1
 
 
